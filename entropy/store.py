@@ -8,3 +8,7 @@ class ImmutableObject(Item):
     content = path(allowNone=False)
     contentType = text(allowNone=False)
     created = timestamp(allowNone=False, defaultFactory=lambda: Time())
+
+
+class ContentStore(Item):
+    hashAlgorithm = text(allowNone=False, default=u'sha1')
