@@ -1,3 +1,5 @@
+from entropy.errors import UnknownHashAlgorithm
+
 try:
     from hashlib import sha256
 except ImportError:
@@ -39,3 +41,14 @@ class MessageDigestWrapper(object):
 if sha256 is None:
     def sha256(*a, **kw):
         return MessageDigestWrapper('sha256', *a, **kw)
+
+
+_hashes = {
+    u'sha256': sha256,
+    }
+
+def getHash(algo):
+    try:
+        return _hashes[algo]
+    except KeyError:
+        return UnknownHashAlgorithm(algo)
