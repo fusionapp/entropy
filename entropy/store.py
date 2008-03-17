@@ -67,4 +67,4 @@ class ContentStore(Item):
                               hash=self.hash,
                               content=contentFile.finalpath,
                               contentType=contentType)
-        return obj
+        return obj.objectId

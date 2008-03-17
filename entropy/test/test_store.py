@@ -19,8 +19,5 @@ class ContentStoreTests(TestCase):
         content = 'blahblah some data blahblah'
         contentType = u'application/octet-stream'
         expectedDigest = u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862'
-        obj = self.contentStore.storeObject(content, contentType)
-        self.assertEqual(obj.contentDigest, expectedDigest)
-        self.assertEqual(obj.contentType, contentType)
-        self.assertEqual(obj.hash, u'sha256')
-        self.assertEqual(obj.content.open().read(), content)
+        objectId = self.contentStore.storeObject(content, contentType)
+        self.assertEqual(objectId, u'sha256:%s' % expectedDigest)
