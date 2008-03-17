@@ -1,3 +1,5 @@
+from zope.interface import implements
+
 from epsilon.extime import Time
 
 from axiom.item import Item
@@ -8,6 +10,7 @@ from twisted.python.components import registerAdapter
 from nevow.inevow import IResource
 from nevow.static import File
 
+from entropy.ientropy import IContentStore
 from entropy.errors import CorruptObject
 from entropy.hash import getHash
 
@@ -51,8 +54,11 @@ class ContentStore(Item):
     """
     Manager for stored objects.
     """
+    implements(IContentStore)
+
     hash = text(allowNone=False, default=u'sha256')
 
+    # IContentStore
     def storeObject(self, content, contentType, metadata={}):
         if metadata != {}:
             raise NotImplementedError('metadata not yet supported')
