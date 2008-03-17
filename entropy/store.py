@@ -3,6 +3,9 @@ from epsilon.extime import Time
 from axiom.item import Item
 from axiom.attributes import text, path, timestamp
 
+from twisted.python.components import registerAdapter
+
+from nevow.inevow import IResource
 from nevow.static import File
 
 from entropy.errors import CorruptObject
@@ -40,6 +43,8 @@ def objectResource(obj):
     Adapt L{ImmutableObject) to L{IResource}.
     """
     return File(obj.content.path, defaultType=obj.contentType)
+
+registerAdapter(objectResource, ImmutableObject, IResource)
 
 
 class ContentStore(Item):
