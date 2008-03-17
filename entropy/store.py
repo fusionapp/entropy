@@ -3,7 +3,7 @@ from zope.interface import implements
 from epsilon.extime import Time
 
 from axiom.item import Item
-from axiom.attributes import text, path, timestamp
+from axiom.attributes import text, path, timestamp, AND
 
 from twisted.python.components import registerAdapter
 
@@ -22,11 +22,15 @@ class ImmutableObject(Item):
     Immutable objects are addressed by content hash, and consist of the object
     data as a binary blob, and object key/value metadata pairs.
     """
-    contentDigest = text(allowNone=False)
     hash = text(allowNone=False)
+    contentDigest = text(allowNone=False)
     content = path(allowNone=False)
     contentType = text(allowNone=False)
     created = timestamp(allowNone=False, defaultFactory=lambda: Time())
+
+    @property
+    def objectId(self):
+        return u'%s:%s' % (self.hash, self.contentDigest)
 
     def _getDigest(self):
         fp = self.content.open()
@@ -79,3 +83,10 @@ class ContentStore(Item):
                               content=contentFile.finalpath,
                               contentType=contentType)
         return obj.objectId
+
+    def getObject(self, objectId):
+        hash, contentDigest = objectId.split(u':', 1)
+        obj = self.store.findUnique(ImmutableObject,
+                                    AND(ImmutableObject.hash == hash,
+                                        ImmutableObject.contentDigest == contentDigest))
+        return obj

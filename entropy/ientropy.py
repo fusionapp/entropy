@@ -17,3 +17,11 @@ class IContentStore(Interface):
         @returns: the object identifier.
         @rtype: C{unicode}
         """
+
+    def getObject(objectID):
+        """
+        Retrieve an object.
+
+        @param objectId: the object identifier.
+        @type objectId: C{unicode}
+        """
