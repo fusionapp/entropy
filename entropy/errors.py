@@ -11,3 +11,9 @@ class CorruptObject(RuntimeError):
     """
     An object's contents did not have the expected digest.
     """
+
+
+class NonexistentObject(ValueError):
+    """
+    The specified object does not exist.
+    """

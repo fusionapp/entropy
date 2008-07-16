@@ -1,9 +1,9 @@
 from zope.interface import implements
 
 from axiom.item import Item
-from axiom.attributes import text, path
-from axiom.dependency import dependsOn
-from axiom.userbase import LoginSystem
+from axiom.attributes import path
+
+from nevow.inevow import IResource
 
 from xmantissa.ixmantissa import IProtocolFactoryFactory
 from xmantissa.web import AxiomSite
@@ -20,8 +20,6 @@ class SimpleSiteFactory(Item):
     """
     powerupInterfaces = [IProtocolFactoryFactory]
     implements(*powerupInterfaces)
-
-    loginSystem = dependsOn(LoginSystem)
 
     httpLog = path(default=None)
 

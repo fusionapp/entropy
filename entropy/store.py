@@ -1,17 +1,37 @@
+"""
+Object data store.
+
+This service acts as a cache / access point for a backend object store;
+currently Amazon S3 is used as the backend store, but the architecture should
+be flexible enough to allow other possibilities. The system is designed to
+handle objects in an immutable fashion; once an object is created, it exists in
+perpetuity, and the contents will never change.
+
+The service's functionality is two-fold; firstly, it handles requests for
+retrieval of objects, servicing them from the local cache, fetching them from a
+neighbour cache, or retrieving them from the backend store. Secondly, it
+handles requests for storage of a new object; the object is first cached
+locally to ensure local view consistency, and then queued for backend storage
+in a reliable fashion.
+"""
 from zope.interface import implements
 
 from epsilon.extime import Time
 
 from axiom.item import Item
-from axiom.attributes import text, path, timestamp, AND
+from axiom.attributes import text, path, timestamp, AND, inmemory
+from axiom.dependency import dependsOn
 
+from twisted.web import http
 from twisted.python.components import registerAdapter
 
-from nevow.inevow import IResource
+from nevow.inevow import IResource, IRequest
 from nevow.static import File
+from nevow.rend import NotFound
+from nevow.url import URL
 
 from entropy.ientropy import IContentStore
-from entropy.errors import CorruptObject
+from entropy.errors import CorruptObject, NonexistentObject
 from entropy.hash import getHash
 
 
@@ -42,14 +62,16 @@ class ImmutableObject(Item):
 
     def verify(self):
         digest = self._getDigest()
-        if self.contentHash != digest:
+        if self.contentDigest != digest:
             raise CorruptObject('expected: %r actual: %r' % (self.contentDigest, digest))
 
 def objectResource(obj):
     """
     Adapt L{ImmutableObject) to L{IResource}.
     """
-    return File(obj.content.path, defaultType=obj.contentType)
+    # XXX: Not sure if we should do this on every single resource retrieval.
+    obj.verify()
+    return File(obj.content.path, defaultType=obj.contentType.encode('ascii'))
 
 registerAdapter(objectResource, ImmutableObject, IResource)
 
@@ -88,5 +110,86 @@ class ContentStore(Item):
         hash, contentDigest = objectId.split(u':', 1)
         obj = self.store.findUnique(ImmutableObject,
                                     AND(ImmutableObject.hash == hash,
-                                        ImmutableObject.contentDigest == contentDigest))
+                                        ImmutableObject.contentDigest == contentDigest),
+                                    default=None)
+        if obj is None:
+            raise NonexistentObject(objectId)
         return obj
+
+
+class ObjectCreator(object):
+    """
+    Resource for storing new objects.
+
+    @ivar contentStore: The {IContentStore} provider to create objects in.
+    """
+    implements(IResource)
+
+    def __init__(self, contentStore):
+        self.contentStore = contentStore
+
+    # IResource
+    def renderHTTP(self, ctx):
+        req = IRequest(ctx)
+        if req.method == 'GET':
+            return 'PUT data here to create an object.'
+        elif req.method == 'PUT':
+            data = req.content.read()
+            contentType = unicode(req.getHeader('Content-Type'), 'ascii') or u'application/octet-stream'
+            objectId = self.contentStore.storeObject(data, contentType)
+            return objectId.encode('ascii')
+        else:
+            req.setResponseCode(http.NOT_ALLOWED)
+            return ''
+
+
+class ContentResource(Item):
+    """
+    Resource for accessing the content store.
+    """
+    implements(IResource)
+    powerupInterfaces = [IResource]
+
+    addSlash = inmemory()
+
+    contentStore = dependsOn(ContentStore)
+
+    def childFactory(self, name):
+        """
+        Hook up children.
+
+        / is the root, nothing to see her.
+
+        /new is how new objects are stored.
+
+        /<objectId> is where existing objects are retrieved.
+        """
+        if name == '':
+            return self
+        elif name == 'new':
+            return ObjectCreator(self.contentStore)
+        else:
+            try:
+                obj = self.contentStore.getObject(name)
+            except NonexistentObject:
+                pass
+            else:
+                return obj
+        return None
+
+    # IResource
+    def renderHTTP(self, ctx):
+        """
+        Nothing to see here.
+        """
+        return 'Entropy'
+
+    def locateChild(self, ctx, segments):
+        """
+        Dispatch to L{childFactory}.
+        """
+        if len(segments) >= 1:
+            res = self.childFactory(segments[0])
+            if res is not None:
+                return IResource(res), segments[1:]
+        return NotFound

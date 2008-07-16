@@ -2,6 +2,8 @@ from twisted.trial.unittest import TestCase
 from twisted.cred.portal import IRealm
 
 from axiom.store import Store
+from axiom.userbase import LoginSystem
+from axiom.dependency import installOn
 
 from xmantissa.ixmantissa import IOfferingTechnician
 from xmantissa.offering import getOfferings
@@ -11,6 +13,8 @@ from entropy.util import getAppStore
 class GetAppStoreTests(TestCase):
     def setUp(self):
         self.siteStore = Store(self.mktemp())
+        installOn(LoginSystem(store=self.siteStore), self.siteStore)
+
         for offering in getOfferings():
             if offering.name == u'Entropy':
                 break
