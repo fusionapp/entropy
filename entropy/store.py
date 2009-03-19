@@ -135,7 +135,7 @@ class ObjectCreator(object):
             return 'PUT data here to create an object.'
         elif req.method == 'PUT':
             data = req.content.read()
-            contentType = unicode(req.getHeader('Content-Type', 'application/octet-stream'), 'ascii')
+            contentType = unicode(req.getHeader('Content-Type'), 'ascii') or u'application/octet-stream'
             objectId = self.contentStore.storeObject(data, contentType)
             return objectId.encode('ascii')
         else:
