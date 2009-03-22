@@ -154,7 +154,10 @@ class ObjectCreator(object):
                 raise ValueError('Expected hash %r does not match actual hash %r' % (expectedHash, actualHash))
 
         objectId = self.contentStore.storeObject(data, contentType)
-        return objectId.encode('ascii')
+        objectId = objectId.encode('ascii')
+
+        req.setHeader('Content-Type', 'text/plain')
+        return objectId
 
 
 class ContentResource(Item):
