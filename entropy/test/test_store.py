@@ -1,8 +1,12 @@
+from StringIO import StringIO
+
 from twisted.trial.unittest import TestCase
 
 from axiom.store import Store
 
-from entropy.store import ContentStore, ImmutableObject
+from nevow.testutil import FakeRequest
+
+from entropy.store import ContentStore, ImmutableObject, ObjectCreator
 
 class ContentStoreTests(TestCase):
     """
@@ -33,3 +37,27 @@ class ContentStoreTests(TestCase):
                               contentType=u'application/octet-stream')
         obj2 = self.contentStore.getObject(u'somehash:quux')
         self.assertIdentical(obj, obj2)
+
+
+class ObjectCreatorTests(TestCase):
+    def setUp(self):
+        self.store = Store(self.mktemp())
+        self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+        self.creator = ObjectCreator(self.contentStore)
+
+    def test_correctContentMD5(self):
+        req = FakeRequest()
+        req.received_headers['content-md5'] = '72VMQKtPF0f8aZkV1PcJAg=='
+        req.content = StringIO('testdata')
+        self.creator.handlePUT(req)
+
+    def test_incorrectContentMD5(self):
+        req = FakeRequest()
+        req.received_headers['content-md5'] = '72VMQKtPF0f8aZkV1PcJAg=='
+        req.content = StringIO('wrongdata')
+        self.assertRaises(ValueError, self.creator.handlePUT, req)
+
+    def test_missingContentMD5(self):
+        req = FakeRequest()
+        req.content = StringIO('wrongdata')
+        self.creator.handlePUT(req)

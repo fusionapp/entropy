@@ -14,6 +14,8 @@ handles requests for storage of a new object; the object is first cached
 locally to ensure local view consistency, and then queued for backend storage
 in a reliable fashion.
 """
+import hashlib
+
 from zope.interface import implements
 
 from epsilon.extime import Time
@@ -134,13 +136,25 @@ class ObjectCreator(object):
         if req.method == 'GET':
             return 'PUT data here to create an object.'
         elif req.method == 'PUT':
-            data = req.content.read()
-            contentType = unicode(req.getHeader('Content-Type') or 'application/octet-stream', 'ascii')
-            objectId = self.contentStore.storeObject(data, contentType)
-            return objectId.encode('ascii')
+            return self.handlePUT(req)
         else:
             req.setResponseCode(http.NOT_ALLOWED)
-            return ''
+            req.setHeader('Content-Type', 'text/plain')
+            return 'Method not allowed'
+
+    def handlePUT(self, req):
+        data = req.content.read()
+        contentType = unicode(req.getHeader('Content-Type') or 'application/octet-stream', 'ascii')
+
+        contentMD5 = req.getHeader('Content-MD5')
+        if contentMD5 is not None:
+            expectedHash = contentMD5.decode('base64')
+            actualHash = hashlib.md5(data).digest()
+            if expectedHash != actualHash:
+                raise ValueError('Expected hash %r does not match actual hash %r' % (expectedHash, actualHash))
+
+        objectId = self.contentStore.storeObject(data, contentType)
+        return objectId.encode('ascii')
 
 
 class ContentResource(Item):
