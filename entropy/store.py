@@ -93,19 +93,27 @@ class ContentStore(Item):
 
         contentDigest = unicode(getHash(self.hash)(content).hexdigest(), 'ascii')
 
-        contentFile = self.store.newFile('objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
-        try:
-            contentFile.write(content)
-            contentFile.close()
-        except:
-            contentFile.abort()
-            raise
+        obj = self.store.findUnique(ImmutableObject,
+                                    AND(ImmutableObject.hash == self.hash,
+                                        ImmutableObject.contentDigest == contentDigest),
+                                    default=None)
+        if obj is None:
+            contentFile = self.store.newFile('objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
+            try:
+                contentFile.write(content)
+                contentFile.close()
+            except:
+                contentFile.abort()
+                raise
 
-        obj = ImmutableObject(store=self.store,
-                              contentDigest=contentDigest,
-                              hash=self.hash,
-                              content=contentFile.finalpath,
-                              contentType=contentType)
+            obj = ImmutableObject(store=self.store,
+                                  contentDigest=contentDigest,
+                                  hash=self.hash,
+                                  content=contentFile.finalpath,
+                                  contentType=contentType)
+        else:
+            obj.contentType = contentType
+
         return obj.objectId
 
     def getObject(self, objectId):
