@@ -20,7 +20,7 @@ from zope.interface import implements
 
 from epsilon.extime import Time
 
-from axiom.item import Item
+from axiom.item import Item, transacted
 from axiom.attributes import text, path, timestamp, AND, inmemory
 from axiom.dependency import dependsOn
 
@@ -87,6 +87,8 @@ class ContentStore(Item):
     hash = text(allowNone=False, default=u'sha256')
 
     # IContentStore
+
+    @transacted
     def storeObject(self, content, contentType, metadata={}):
         if metadata != {}:
             raise NotImplementedError('metadata not yet supported')
@@ -116,6 +118,7 @@ class ContentStore(Item):
 
         return obj.objectId
 
+    @transacted
     def getObject(self, objectId):
         hash, contentDigest = objectId.split(u':', 1)
         obj = self.store.findUnique(ImmutableObject,
