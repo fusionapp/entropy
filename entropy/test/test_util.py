@@ -8,7 +8,7 @@ from axiom.dependency import installOn
 from xmantissa.ixmantissa import IOfferingTechnician
 from xmantissa.offering import getOfferings
 
-from entropy.util import getAppStore
+from entropy.util import getAppStore, deferred
 
 class GetAppStoreTests(TestCase):
     def setUp(self):
@@ -26,3 +26,20 @@ class GetAppStoreTests(TestCase):
     def test_getAppStore(self):
         appStore = IRealm(self.siteStore).accountByAddress(u'Entropy', None).avatars.open()
         self.assertIdentical(appStore, getAppStore(self.siteStore))
+
+
+@deferred
+def testfn(arg):
+    if arg == 42:
+        raise ValueError('Oh noes')
+    return arg
+
+
+class DeferredTests(TestCase):
+    def test_success(self):
+        d = testfn(50)
+        return d.addCallback(lambda result: self.assertEqual(result, 50))
+
+    def test_failure(self):
+        d = self.assertFailure(testfn(42), ValueError)
+        return d.addCallback(lambda e: self.assertEqual(e.message, 'Oh noes'))
