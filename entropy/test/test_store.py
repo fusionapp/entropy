@@ -23,8 +23,9 @@ class ContentStoreTests(TestCase):
         content = 'blahblah some data blahblah'
         contentType = u'application/octet-stream'
         expectedDigest = u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862'
-        objectId = self.contentStore.storeObject(content, contentType)
-        self.assertEqual(objectId, u'sha256:%s' % expectedDigest)
+
+        d = self.contentStore.storeObject(content, contentType)
+        return d.addCallback(lambda objectId: self.assertEqual(objectId, u'sha256:%s' % expectedDigest))
 
     def test_getObject(self):
         """
@@ -35,8 +36,8 @@ class ContentStoreTests(TestCase):
                               contentDigest=u'quux',
                               content=self.store.newFilePath('foo'),
                               contentType=u'application/octet-stream')
-        obj2 = self.contentStore.getObject(u'somehash:quux')
-        self.assertIdentical(obj, obj2)
+        d = self.contentStore.getObject(u'somehash:quux')
+        return d.addCallback(lambda obj2: self.assertIdentical(obj, obj2))
 
 
 class ObjectCreatorTests(TestCase):
@@ -49,7 +50,7 @@ class ObjectCreatorTests(TestCase):
         req = FakeRequest()
         req.received_headers['content-md5'] = '72VMQKtPF0f8aZkV1PcJAg=='
         req.content = StringIO('testdata')
-        self.creator.handlePUT(req)
+        return self.creator.handlePUT(req)
 
     def test_incorrectContentMD5(self):
         req = FakeRequest()
@@ -60,4 +61,4 @@ class ObjectCreatorTests(TestCase):
     def test_missingContentMD5(self):
         req = FakeRequest()
         req.content = StringIO('wrongdata')
-        self.creator.handlePUT(req)
+        return self.creator.handlePUT(req)

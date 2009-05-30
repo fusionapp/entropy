@@ -32,9 +32,10 @@ from nevow.static import File
 from nevow.rend import NotFound
 from nevow.url import URL
 
-from entropy.ientropy import IContentStore
+from entropy.ientropy import IContentStore, IContentObject
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.hash import getHash
+from entropy.util import deferred
 
 
 class ImmutableObject(Item):
@@ -44,11 +45,17 @@ class ImmutableObject(Item):
     Immutable objects are addressed by content hash, and consist of the object
     data as a binary blob, and object key/value metadata pairs.
     """
+    implements(IContentObject)
+
     hash = text(allowNone=False)
     contentDigest = text(allowNone=False)
     content = path(allowNone=False)
     contentType = text(allowNone=False)
     created = timestamp(allowNone=False, defaultFactory=lambda: Time())
+
+    @property
+    def metadata(self):
+        return {}
 
     @property
     def objectId(self):
@@ -66,6 +73,9 @@ class ImmutableObject(Item):
         digest = self._getDigest()
         if self.contentDigest != digest:
             raise CorruptObject('expected: %r actual: %r' % (self.contentDigest, digest))
+
+    def getContent(self):
+        return self.content.path.getContent()
 
 def objectResource(obj):
     """
@@ -88,8 +98,9 @@ class ContentStore(Item):
 
     # IContentStore
 
+    @deferred
     @transacted
-    def storeObject(self, content, contentType, metadata={}):
+    def storeObject(self, content, contentType, metadata={}, created=None):
         if metadata != {}:
             raise NotImplementedError('metadata not yet supported')
 
@@ -115,9 +126,23 @@ class ContentStore(Item):
                                   contentType=contentType)
         else:
             obj.contentType = contentType
+            obj.created = created
 
         return obj.objectId
 
+    def importObject(self, obj):
+        """
+        Import an object from elsewhere.
+
+        @param obj: the object to import.
+        @type obj: IContentObject
+        """
+        return self.storeObject(obj.getContent(),
+                                obj.contentType,
+                                obj.metadata,
+                                obj.created)
+
+    @deferred
     @transacted
     def getObject(self, objectId):
         hash, contentDigest = objectId.split(u':', 1)
@@ -164,11 +189,13 @@ class ObjectCreator(object):
             if expectedHash != actualHash:
                 raise ValueError('Expected hash %r does not match actual hash %r' % (expectedHash, actualHash))
 
-        objectId = self.contentStore.storeObject(data, contentType)
-        objectId = objectId.encode('ascii')
+        def _cb(objectId):
+            req.setHeader('Content-Type', 'text/plain')
+            objectId = objectId.encode('ascii')
+            return objectId
 
-        req.setHeader('Content-Type', 'text/plain')
-        return objectId
+        d = self.contentStore.storeObject(data, contentType)
+        return d.addCallback(_cb)
 
 
 class ContentResource(Item):
