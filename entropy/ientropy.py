@@ -52,3 +52,15 @@ class IContentStore(Interface):
         @returns: the content object.
         @rtype: C{Deferred<IContentObject>}
         """
+
+
+class ISiblingStore(IContentStore):
+    """
+    Sibling content store.
+    """
+
+
+class IBackendStore(IContentStore):
+    """
+    Backend content store.
+    """

@@ -19,23 +19,25 @@ import hashlib
 from zope.interface import implements
 
 from epsilon.extime import Time
+from epsilon.structlike import record
 
 from axiom.item import Item, transacted
 from axiom.attributes import text, path, timestamp, AND, inmemory
 from axiom.dependency import dependsOn
 
-from twisted.web import http
+from twisted.web import http, error as eweb
+from twisted.web.client import getPage
 from twisted.python.components import registerAdapter
 
 from nevow.inevow import IResource, IRequest
-from nevow.static import File
+from nevow.static import File, Data
 from nevow.rend import NotFound
 from nevow.url import URL
 
-from entropy.ientropy import IContentStore, IContentObject
+from entropy.ientropy import IContentStore, IContentObject, ISiblingStore
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.hash import getHash
-from entropy.util import deferred
+from entropy.util import deferred, getPageWithHeaders
 
 
 class ImmutableObject(Item):
@@ -98,9 +100,8 @@ class ContentStore(Item):
 
     # IContentStore
 
-    @deferred
     @transacted
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def _storeObject(self, content, contentType, metadata={}, created=None):
         if metadata != {}:
             raise NotImplementedError('metadata not yet supported')
 
@@ -128,6 +129,11 @@ class ContentStore(Item):
             obj.contentType = contentType
             obj.created = created
 
+        return obj
+
+    @deferred
+    def storeObject(self, content, contentType, metadata={}, created=None):
+        obj = self._storeObject(content, contentType, metadata, created)
         return obj.objectId
 
     def importObject(self, obj):
@@ -135,12 +141,36 @@ class ContentStore(Item):
         Import an object from elsewhere.
 
         @param obj: the object to import.
-        @type obj: IContentObject
+        @type obj: ImmutableObject
         """
-        return self.storeObject(obj.getContent(),
-                                obj.contentType,
-                                obj.metadata,
-                                obj.created)
+        return self._storeObject(obj.getContent(),
+                                 obj.contentType,
+                                 obj.metadata,
+                                 obj.created)
+
+    @transacted
+    def getSiblingObject(self, objectId):
+        """
+        Import an object from a sibling store.
+
+        @returns: the local imported object.
+        @type obj: ImmutableObject
+        """
+        siblings = iter(list(self.store.powerupsFor(ISiblingStore)))
+
+        def _eb(f):
+            f.trap(NonexistentObject)
+            return _tryNext()
+
+        def _tryNext():
+            try:
+                remoteStore = siblings.next()
+            except StopIteration:
+                raise NonexistentObject(objectId)
+
+            return remoteStore.getObject(objectId).addCallbacks(self.importObject, _eb)
+
+        return _tryNext()
 
     @deferred
     @transacted
@@ -209,6 +239,17 @@ class ContentResource(Item):
 
     contentStore = dependsOn(ContentStore)
 
+    def getObject(self, name):
+        def _trySibling(f):
+            f.trap(NonexistentObject)
+            return self.contentStore.getSiblingObject(name).addErrback(_notFound)
+
+        def _notFound(f):
+            f.trap(NonexistentObject)
+            return None
+
+        return self.contentStore.getObject(name).addErrback(_trySibling)
+
     def childFactory(self, name):
         """
         Hook up children.
@@ -224,12 +265,7 @@ class ContentResource(Item):
         elif name == 'new':
             return ObjectCreator(self.contentStore)
         else:
-            try:
-                obj = self.contentStore.getObject(name)
-            except NonexistentObject:
-                pass
-            else:
-                return obj
+            return self.getObject(name)
         return None
 
     # IResource
@@ -246,5 +282,58 @@ class ContentResource(Item):
         if len(segments) >= 1:
             res = self.childFactory(segments[0])
             if res is not None:
-                return IResource(res), segments[1:]
+                return res, segments[1:]
         return NotFound
+
+
+class MemoryObject(record('content hash contentDigest contentType created metadata', metadata={})):
+    implements(IContentObject)
+
+    def getContent(self):
+        return self.content
+
+
+class RemoteEntropyStore(Item):
+    """
+    IContentStore implementation for remote Entropy services.
+    """
+    implements(IContentStore)
+
+    entropyURI = text(allowNone=False, doc="""The URI of the Entropy service in use.""")
+
+    def getURI(self, documentId):
+        """
+        Construct an Entropy URI for the specified document.
+        """
+        return self.entropyURI + documentId
+
+    # IContentStore
+    def storeObject(self, content, contentType, metadata={}, created=None):
+        digest = hashlib.md5(data).digest()
+        return getPage((self.entropyURI + 'new').encode('ascii'),
+                       method='PUT',
+                       postdata=data,
+                       headers={'Content-Length': len(data),
+                                'Content-Type': contentType,
+                                'Content-MD5': b64encode(digest)}
+                    ).addCallback(lambda url: unicode(url, 'ascii'))
+
+    def getObject(self, objectId):
+        def _eb(f):
+            f.trap(eweb.Error)
+            if f.value.status == '404':
+                raise NonexistentObject(objectId)
+            return f
+
+        def _makeContentObject((data, headers)):
+            hash, contentDigest = objectId.split(':', 1)
+            # XXX: Actually get the real creation time
+            return MemoryObject(content=data,
+                                hash=hash,
+                                contentDigest=contentDigest,
+                                contentType=unicode(headers['content-type'][0], 'ascii'),
+                                metadata={},
+                                created=Time())
+
+        return getPageWithHeaders(self.getURI(objectId)
+                    ).addCallbacks(_makeContentObject, _eb)
