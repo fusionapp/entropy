@@ -10,4 +10,4 @@ def getHash(algo):
     try:
         return _hashes[algo]
     except KeyError:
-        return UnknownHashAlgorithm(algo)
+        raise UnknownHashAlgorithm(algo)
