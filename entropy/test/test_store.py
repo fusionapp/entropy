@@ -41,24 +41,38 @@ class ContentStoreTests(TestCase):
 
 
 class ObjectCreatorTests(TestCase):
+    """
+    Tests for L{ObjectCreator}.
+    """
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store, hash=u'sha256')
         self.creator = ObjectCreator(self.contentStore)
 
     def test_correctContentMD5(self):
+        """
+        Submitting a request with a Content-MD5 header that agrees with the
+        uploaded data should succeed.
+        """
         req = FakeRequest()
         req.received_headers['content-md5'] = '72VMQKtPF0f8aZkV1PcJAg=='
         req.content = StringIO('testdata')
         return self.creator.handlePUT(req)
 
     def test_incorrectContentMD5(self):
+        """
+        Submitting a request with a Content-MD5 header that disagrees with the
+        uploaded data should fail.
+        """
         req = FakeRequest()
         req.received_headers['content-md5'] = '72VMQKtPF0f8aZkV1PcJAg=='
         req.content = StringIO('wrongdata')
         self.assertRaises(ValueError, self.creator.handlePUT, req)
 
     def test_missingContentMD5(self):
+        """
+        Submitting a request with no Content-MD5 header should succeed.
+        """
         req = FakeRequest()
         req.content = StringIO('wrongdata')
         return self.creator.handlePUT(req)
