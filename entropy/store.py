@@ -77,7 +77,7 @@ class ImmutableObject(Item):
             raise CorruptObject('expected: %r actual: %r' % (self.contentDigest, digest))
 
     def getContent(self):
-        return self.content.path.getContent()
+        return self.content.getContent()
 
 def objectResource(obj):
     """

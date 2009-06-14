@@ -7,6 +7,7 @@ from axiom.store import Store
 from nevow.testutil import FakeRequest
 
 from entropy.store import ContentStore, ImmutableObject, ObjectCreator
+from entropy.errors import CorruptObject
 
 class ContentStoreTests(TestCase):
     """
@@ -76,3 +77,51 @@ class ObjectCreatorTests(TestCase):
         req = FakeRequest()
         req.content = StringIO('wrongdata')
         return self.creator.handlePUT(req)
+
+
+class ImmutableObjectTests(TestCase):
+    """
+    Tests for L{ImmutableObject}.
+    """
+    def setUp(self):
+        self.store = Store(self.mktemp())
+        self.contentStore = ContentStore(store=self.store)
+        self.contentStore.storeObject(content='somecontent',
+                                      contentType=u'application/octet-stream')
+        self.testObject = self.store.findUnique(ImmutableObject)
+
+    def test_metadata(self):
+        """
+        Metadata is not yet supported, so L{ImmutableObject.metadata} should be
+        an empty dict.
+        """
+        self.assertEqual(self.testObject.metadata, {})
+
+    def test_verify(self):
+        """
+        Verification should succeed when the object contents has not been
+        altered.
+        """
+        self.testObject.verify()
+
+    def test_verifyDamaged(self):
+        """
+        Verification should fail if the object contents is modified.
+        """
+        self.testObject.content.setContent('garbage!')
+        self.assertRaises(CorruptObject, self.testObject.verify)
+
+    def test_getContent(self):
+        """
+        L{ImmutableObject.getContent} returns the contents of the object.
+        """
+        self.assertEqual(self.testObject.getContent(), 'somecontent')
+
+    def test_objectId(self):
+        """
+        The object ID is composed of the digest function and content digest,
+        separated by a colon.
+        """
+        self.assertEqual(
+            self.testObject.objectId,
+            'sha256:d5a3477d91583e65a7aba6f6db7a53e2de739bc7bf8f4a08f0df0457b637f1fb')
