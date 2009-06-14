@@ -1,4 +1,7 @@
 from StringIO import StringIO
+from datetime import timedelta
+
+from epsilon.extime import Time
 
 from twisted.trial.unittest import TestCase
 
@@ -7,7 +10,7 @@ from axiom.store import Store
 from nevow.testutil import FakeRequest
 
 from entropy.store import ContentStore, ImmutableObject, ObjectCreator
-from entropy.errors import CorruptObject
+from entropy.errors import CorruptObject, NonexistentObject
 
 class ContentStoreTests(TestCase):
     """
@@ -28,6 +31,15 @@ class ContentStoreTests(TestCase):
         d = self.contentStore.storeObject(content, contentType)
         return d.addCallback(lambda objectId: self.assertEqual(objectId, u'sha256:%s' % expectedDigest))
 
+    def test_metadata(self):
+        """
+        Attempting to store metadata results in an exception as this is not yet
+        implemented.
+        """
+        d = self.contentStore.storeObject('blah', 'blah', metadata={'blah': 'blah'})
+        return self.assertFailure(d, NotImplementedError
+            ).addCallback(lambda e: self.assertSubstring('metadata', e.message))
+
     def test_getObject(self):
         """
         Test retrieving object.
@@ -39,6 +51,28 @@ class ContentStoreTests(TestCase):
                               contentType=u'application/octet-stream')
         d = self.contentStore.getObject(u'somehash:quux')
         return d.addCallback(lambda obj2: self.assertIdentical(obj, obj2))
+
+    def test_updateObject(self):
+        """
+        Storing an object that is already in the store just updates the content
+        type and timestamp.
+        """
+        t1 = Time()
+        t2 = t1 + timedelta(seconds=30)
+        obj = self.contentStore._storeObject('blah', u'application/octet-stream', created=t1)
+        obj2 = self.contentStore._storeObject('blah', u'text/plain', created=t2)
+        self.assertIdentical(obj, obj2)
+        self.assertEqual(obj.contentType, u'text/plain')
+        self.assertEqual(obj.created, t2)
+
+    def test_nonexistentObject(self):
+        """
+        Retrieving a nonexistent object results in L{NonexistentObject}.
+        """
+        objectId = u'sha256:NOSUCHOBJECT'
+        d = self.contentStore.getObject(objectId)
+        return self.assertFailure(d, NonexistentObject
+            ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
 
 
 class ObjectCreatorTests(TestCase):

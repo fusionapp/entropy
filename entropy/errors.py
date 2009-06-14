@@ -17,3 +17,6 @@ class NonexistentObject(ValueError):
     """
     The specified object does not exist.
     """
+    def __init__(self, objectId):
+        ValueError.__init__(self, objectId)
+        self.objectId = objectId

@@ -98,10 +98,11 @@ class ContentStore(Item):
 
     hash = text(allowNone=False, default=u'sha256')
 
-    # IContentStore
-
     @transacted
     def _storeObject(self, content, contentType, metadata={}, created=None):
+        """
+        Do the actual work of synchronously storing the object.
+        """
         if metadata != {}:
             raise NotImplementedError('metadata not yet supported')
 
@@ -113,12 +114,8 @@ class ContentStore(Item):
                                     default=None)
         if obj is None:
             contentFile = self.store.newFile('objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
-            try:
-                contentFile.write(content)
-                contentFile.close()
-            except:
-                contentFile.abort()
-                raise
+            contentFile.write(content)
+            contentFile.close()
 
             obj = ImmutableObject(store=self.store,
                                   contentDigest=contentDigest,
@@ -130,11 +127,6 @@ class ContentStore(Item):
             obj.created = created
 
         return obj
-
-    @deferred
-    def storeObject(self, content, contentType, metadata={}, created=None):
-        obj = self._storeObject(content, contentType, metadata, created)
-        return obj.objectId
 
     def importObject(self, obj):
         """
@@ -171,6 +163,13 @@ class ContentStore(Item):
             return remoteStore.getObject(objectId).addCallbacks(self.importObject, _eb)
 
         return _tryNext()
+
+    # IContentStore
+
+    @deferred
+    def storeObject(self, content, contentType, metadata={}, created=None):
+        obj = self._storeObject(content, contentType, metadata, created)
+        return obj.objectId
 
     @deferred
     @transacted
