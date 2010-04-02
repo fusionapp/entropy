@@ -124,6 +124,8 @@ class ContentStore(Item):
                                   contentType=contentType)
         else:
             obj.contentType = contentType
+            if created is None:
+                created = Time()
             obj.created = created
 
         return obj
