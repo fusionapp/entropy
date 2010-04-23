@@ -88,9 +88,11 @@ def objectResource(obj):
     """
     Adapt L{ImmutableObject) to L{IResource}.
     """
-    # XXX: Not sure if we should do this on every single resource retrieval.
     obj.verify()
-    return File(obj.content.path, defaultType=obj.contentType.encode('ascii'))
+    res = File(obj.content.path)
+    res.type = obj.contentType.encode('ascii')
+    res.encoding = None
+    return res
 
 registerAdapter(objectResource, ImmutableObject, IResource)
 
@@ -213,6 +215,7 @@ class ObjectCreator(object):
     def renderHTTP(self, ctx):
         req = IRequest(ctx)
         if req.method == 'GET':
+            req.setHeader('Content-Type', 'text/plain')
             return 'PUT data here to create an object.'
         elif req.method == 'PUT':
             return self.handlePUT(req)

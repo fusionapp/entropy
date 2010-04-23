@@ -7,7 +7,9 @@ from twisted.trial.unittest import TestCase
 
 from axiom.store import Store
 
+from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
+from nevow.static import File
 
 from entropy.store import ContentStore, ImmutableObject, ObjectCreator
 from entropy.errors import CorruptObject, NonexistentObject
@@ -176,3 +178,24 @@ class ImmutableObjectTests(TestCase):
         self.assertEqual(
             self.testObject.objectId,
             'sha256:d5a3477d91583e65a7aba6f6db7a53e2de739bc7bf8f4a08f0df0457b637f1fb')
+
+
+    def test_adaptToResource(self):
+        """
+        Adapting L{ImmutableObject} to L{IResource} gives us a L{File} instance
+        pointing at the on-disk blob.
+        """
+        res = IResource(self.testObject)
+        self.assertIsInstance(res, File)
+        self.assertEqual(res.fp, self.testObject.content)
+        self.assertEqual(res.type, 'application/octet-stream')
+        self.assertEqual(res.encoding, None)
+
+
+    def test_adaptDamagedObject(self):
+        """
+        Adapting L{ImmutableObject} to L{IResource} verifies the object
+        contents.
+        """
+        self.testObject.content.setContent('garbage!')
+        self.assertRaises(CorruptObject, IResource, self.testObject)
