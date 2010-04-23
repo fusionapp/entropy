@@ -1,6 +1,7 @@
 from zope.interface import Interface, Attribute
 
 
+
 class IContentObject(Interface):
     """
     Immutable content object.
@@ -17,6 +18,7 @@ class IContentObject(Interface):
 
         @rtype: C{str}
         """
+
 
 
 class IContentStore(Interface):
@@ -54,10 +56,12 @@ class IContentStore(Interface):
         """
 
 
+
 class ISiblingStore(IContentStore):
     """
     Sibling content store.
     """
+
 
 
 class IBackendStore(IContentStore):

@@ -40,6 +40,7 @@ from entropy.hash import getHash
 from entropy.util import deferred, getPageWithHeaders
 
 
+
 class ImmutableObject(Item):
     """
     An immutable object.
@@ -59,9 +60,11 @@ class ImmutableObject(Item):
     def metadata(self):
         return {}
 
+
     @property
     def objectId(self):
         return u'%s:%s' % (self.hash, self.contentDigest)
+
 
     def _getDigest(self):
         fp = self.content.open()
@@ -71,10 +74,12 @@ class ImmutableObject(Item):
         finally:
             fp.close()
 
+
     def verify(self):
         digest = self._getDigest()
         if self.contentDigest != digest:
             raise CorruptObject('expected: %r actual: %r' % (self.contentDigest, digest))
+
 
     def getContent(self):
         return self.content.getContent()
@@ -88,6 +93,7 @@ def objectResource(obj):
     return File(obj.content.path, defaultType=obj.contentType.encode('ascii'))
 
 registerAdapter(objectResource, ImmutableObject, IResource)
+
 
 
 class ContentStore(Item):
@@ -130,6 +136,7 @@ class ContentStore(Item):
 
         return obj
 
+
     def importObject(self, obj):
         """
         Import an object from elsewhere.
@@ -141,6 +148,7 @@ class ContentStore(Item):
                                  obj.contentType,
                                  obj.metadata,
                                  obj.created)
+
 
     @transacted
     def getSiblingObject(self, objectId):
@@ -166,12 +174,14 @@ class ContentStore(Item):
 
         return _tryNext()
 
+
     # IContentStore
 
     @deferred
     def storeObject(self, content, contentType, metadata={}, created=None):
         obj = self._storeObject(content, contentType, metadata, created)
         return obj.objectId
+
 
     @deferred
     @transacted
@@ -186,6 +196,7 @@ class ContentStore(Item):
         return obj
 
 
+
 class ObjectCreator(object):
     """
     Resource for storing new objects.
@@ -196,6 +207,7 @@ class ObjectCreator(object):
 
     def __init__(self, contentStore):
         self.contentStore = contentStore
+
 
     # IResource
     def renderHTTP(self, ctx):
@@ -208,6 +220,7 @@ class ObjectCreator(object):
             req.setResponseCode(http.NOT_ALLOWED)
             req.setHeader('Content-Type', 'text/plain')
             return 'Method not allowed'
+
 
     def handlePUT(self, req):
         data = req.content.read()
@@ -227,6 +240,7 @@ class ObjectCreator(object):
 
         d = self.contentStore.storeObject(data, contentType)
         return d.addCallback(_cb)
+
 
 
 class ContentResource(Item):
@@ -251,6 +265,7 @@ class ContentResource(Item):
 
         return self.contentStore.getObject(name).addErrback(_trySibling)
 
+
     def childFactory(self, name):
         """
         Hook up children.
@@ -269,12 +284,14 @@ class ContentResource(Item):
             return self.getObject(name)
         return None
 
+
     # IResource
     def renderHTTP(self, ctx):
         """
         Nothing to see here.
         """
         return 'Entropy'
+
 
     def locateChild(self, ctx, segments):
         """
@@ -287,11 +304,13 @@ class ContentResource(Item):
         return NotFound
 
 
+
 class MemoryObject(record('content hash contentDigest contentType created metadata', metadata={})):
     implements(IContentObject)
 
     def getContent(self):
         return self.content
+
 
 
 class RemoteEntropyStore(Item):
@@ -308,6 +327,7 @@ class RemoteEntropyStore(Item):
         """
         return self.entropyURI + documentId
 
+
     # IContentStore
     def storeObject(self, content, contentType, metadata={}, created=None):
         digest = hashlib.md5(data).digest()
@@ -318,6 +338,7 @@ class RemoteEntropyStore(Item):
                                 'Content-Type': contentType,
                                 'Content-MD5': b64encode(digest)}
                     ).addCallback(lambda url: unicode(url, 'ascii'))
+
 
     def getObject(self, objectId):
         def _eb(f):

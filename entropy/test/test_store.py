@@ -12,6 +12,8 @@ from nevow.testutil import FakeRequest
 from entropy.store import ContentStore, ImmutableObject, ObjectCreator
 from entropy.errors import CorruptObject, NonexistentObject
 
+
+
 class ContentStoreTests(TestCase):
     """
     Tests for L{ContentStore}.
@@ -19,6 +21,7 @@ class ContentStoreTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+
 
     def test_storeObject(self):
         """
@@ -31,6 +34,7 @@ class ContentStoreTests(TestCase):
         d = self.contentStore.storeObject(content, contentType)
         return d.addCallback(lambda objectId: self.assertEqual(objectId, u'sha256:%s' % expectedDigest))
 
+
     def test_metadata(self):
         """
         Attempting to store metadata results in an exception as this is not yet
@@ -39,6 +43,7 @@ class ContentStoreTests(TestCase):
         d = self.contentStore.storeObject('blah', 'blah', metadata={'blah': 'blah'})
         return self.assertFailure(d, NotImplementedError
             ).addCallback(lambda e: self.assertSubstring('metadata', e.message))
+
 
     def test_getObject(self):
         """
@@ -51,6 +56,7 @@ class ContentStoreTests(TestCase):
                               contentType=u'application/octet-stream')
         d = self.contentStore.getObject(u'somehash:quux')
         return d.addCallback(lambda obj2: self.assertIdentical(obj, obj2))
+
 
     def test_updateObject(self):
         """
@@ -65,6 +71,7 @@ class ContentStoreTests(TestCase):
         self.assertEqual(obj.contentType, u'text/plain')
         self.assertEqual(obj.created, t2)
 
+
     def test_nonexistentObject(self):
         """
         Retrieving a nonexistent object results in L{NonexistentObject}.
@@ -73,6 +80,7 @@ class ContentStoreTests(TestCase):
         d = self.contentStore.getObject(objectId)
         return self.assertFailure(d, NonexistentObject
             ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
+
 
 
 class ObjectCreatorTests(TestCase):
@@ -84,6 +92,7 @@ class ObjectCreatorTests(TestCase):
         self.contentStore = ContentStore(store=self.store, hash=u'sha256')
         self.creator = ObjectCreator(self.contentStore)
 
+
     def test_correctContentMD5(self):
         """
         Submitting a request with a Content-MD5 header that agrees with the
@@ -93,6 +102,7 @@ class ObjectCreatorTests(TestCase):
         req.received_headers['content-md5'] = '72VMQKtPF0f8aZkV1PcJAg=='
         req.content = StringIO('testdata')
         return self.creator.handlePUT(req)
+
 
     def test_incorrectContentMD5(self):
         """
@@ -104,6 +114,7 @@ class ObjectCreatorTests(TestCase):
         req.content = StringIO('wrongdata')
         self.assertRaises(ValueError, self.creator.handlePUT, req)
 
+
     def test_missingContentMD5(self):
         """
         Submitting a request with no Content-MD5 header should succeed.
@@ -111,6 +122,7 @@ class ObjectCreatorTests(TestCase):
         req = FakeRequest()
         req.content = StringIO('wrongdata')
         return self.creator.handlePUT(req)
+
 
 
 class ImmutableObjectTests(TestCase):
@@ -124,12 +136,14 @@ class ImmutableObjectTests(TestCase):
                                       contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
 
+
     def test_metadata(self):
         """
         Metadata is not yet supported, so L{ImmutableObject.metadata} should be
         an empty dict.
         """
         self.assertEqual(self.testObject.metadata, {})
+
 
     def test_verify(self):
         """
@@ -138,6 +152,7 @@ class ImmutableObjectTests(TestCase):
         """
         self.testObject.verify()
 
+
     def test_verifyDamaged(self):
         """
         Verification should fail if the object contents is modified.
@@ -145,11 +160,13 @@ class ImmutableObjectTests(TestCase):
         self.testObject.content.setContent('garbage!')
         self.assertRaises(CorruptObject, self.testObject.verify)
 
+
     def test_getContent(self):
         """
         L{ImmutableObject.getContent} returns the contents of the object.
         """
         self.assertEqual(self.testObject.getContent(), 'somecontent')
+
 
     def test_objectId(self):
         """
