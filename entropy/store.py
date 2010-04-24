@@ -162,23 +162,18 @@ class ContentStore(Item):
         @returns: the local imported object.
         @type obj: ImmutableObject
         """
-        siblings = [self]
-        siblings.extend(self.store.powerupsFor(ISiblingStore))
-        it = iter(siblings)
+        siblings = iter(list(self.store.powerupsFor(ISiblingStore)))
 
         def _eb(f):
             f.trap(NonexistentObject)
-            return _tryNext()
-
-        def _tryNext():
             try:
-                remoteStore = it.next()
+                remoteStore = siblings.next()
             except StopIteration:
                 raise NonexistentObject(objectId)
 
             return remoteStore.getObject(objectId).addCallbacks(self.importObject, _eb)
 
-        return _tryNext()
+        return self.getObject(objectId).addErrback(_eb)
 
 
     # IContentStore
@@ -264,7 +259,6 @@ class ContentResource(Item):
     def getObject(self, name):
         def _trySibling(f):
             f.trap(NonexistentObject)
-            return self.contentStore.getSiblingObject(name).addErrback(_notFound)
 
         def _notFound(f):
             f.trap(NonexistentObject)

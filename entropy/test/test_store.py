@@ -163,6 +163,18 @@ class StoreBackendTests(TestCase):
         self.assertIdentical(self.o, self.o2)
 
 
+    def test_getSiblingMissing(self):
+        """
+        Calling getSiblingObject with an object ID that is missing everywhere
+        raises L{NonexistentObject}.
+        """
+        self.store.powerUp(self.contentStore1, ISiblingStore)
+        objectId = u'sha256:NOSUCHOBJECT'
+        d = self.contentStore2.getSiblingObject(objectId)
+        return self.assertFailure(d, NonexistentObject
+            ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
+
+
 
 class ObjectCreatorTests(TestCase):
     """
