@@ -11,9 +11,10 @@ from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
 from nevow.static import File
 
+from entropy.ientropy import ISiblingStore
+from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
     MemoryObject)
-from entropy.errors import CorruptObject, NonexistentObject
 
 
 
@@ -35,7 +36,10 @@ class ContentStoreTests(TestCase):
         expectedDigest = u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862'
 
         d = self.contentStore.storeObject(content, contentType)
-        return d.addCallback(lambda objectId: self.assertEqual(objectId, u'sha256:%s' % expectedDigest))
+        def _cb(oid):
+            self.oid = oid
+        d.addCallback(_cb)
+        self.assertEqual(self.oid, u'sha256:' + expectedDigest)
 
 
     def test_metadata(self):
@@ -110,6 +114,53 @@ class ContentStoreTests(TestCase):
         d = self.contentStore.getObject(objectId)
         return self.assertFailure(d, NonexistentObject
             ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
+
+
+
+class StoreBackendTests(TestCase):
+    """
+    Tests for content store backend functionality.
+    """
+    def setUp(self):
+        self.store = Store(self.mktemp())
+        self.contentStore1 = ContentStore(store=self.store)
+        self.contentStore1.storeObject(content='somecontent',
+                                       contentType=u'application/octet-stream')
+        self.testObject = self.store.findUnique(ImmutableObject)
+
+        self.contentStore2 = ContentStore(store=self.store)
+
+
+    def test_getSiblingExists(self):
+        """
+        Calling getSiblingObject with an object ID that is present in the local
+        store just returns the local object.
+        """
+        d = self.contentStore1.getSiblingObject(self.testObject.objectId)
+        def _cb(o):
+            self.o = o
+        d.addCallback(_cb)
+        self.assertIdentical(self.o, self.testObject)
+
+
+    def test_getSiblingExistsRemote(self):
+        """
+        Calling getSiblingObject with an object ID that is missing locally, but
+        present in one of the sibling stores, will retrieve the object, as well
+        as inserting it into the local store.
+        """
+        self.store.powerUp(self.contentStore1, ISiblingStore)
+        d = self.contentStore2.getSiblingObject(self.testObject.objectId)
+        def _cb(o):
+            self.o = o
+        d.addCallback(_cb)
+
+        self.assertEqual(self.o.getContent(), 'somecontent')
+        d = self.contentStore2.getObject(self.testObject.objectId)
+        def _cb(o2):
+            self.o2 = o2
+        d.addCallback(_cb)
+        self.assertIdentical(self.o, self.o2)
 
 
 

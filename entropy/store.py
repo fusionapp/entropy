@@ -162,7 +162,9 @@ class ContentStore(Item):
         @returns: the local imported object.
         @type obj: ImmutableObject
         """
-        siblings = iter(list(self.store.powerupsFor(ISiblingStore)))
+        siblings = [self]
+        siblings.extend(self.store.powerupsFor(ISiblingStore))
+        it = iter(siblings)
 
         def _eb(f):
             f.trap(NonexistentObject)
@@ -170,7 +172,7 @@ class ContentStore(Item):
 
         def _tryNext():
             try:
-                remoteStore = siblings.next()
+                remoteStore = it.next()
             except StopIteration:
                 raise NonexistentObject(objectId)
 
@@ -352,14 +354,9 @@ class RemoteEntropyStore(Item):
 
 
     def getObject(self, objectId):
-        def _eb(f):
-            f.trap(eweb.Error)
-            if f.value.status == '404':
-                raise NonexistentObject(objectId)
-            return f
+        hash, contentDigest = objectId.split(':', 1)
 
         def _makeContentObject((data, headers)):
-            hash, contentDigest = objectId.split(':', 1)
             # XXX: Actually get the real creation time
             return MemoryObject(content=data,
                                 hash=hash,
@@ -367,6 +364,12 @@ class RemoteEntropyStore(Item):
                                 contentType=unicode(headers['content-type'][0], 'ascii'),
                                 metadata={},
                                 created=Time())
+
+        def _eb(f):
+            f.trap(eweb.Error)
+            if f.value.status == '404':
+                raise NonexistentObject(objectId)
+            return f
 
         return getPageWithHeaders(self.getURI(objectId)
                     ).addCallbacks(_makeContentObject, _eb)
