@@ -226,7 +226,9 @@ class ObjectCreator(object):
 
     def handlePUT(self, req):
         data = req.content.read()
-        contentType = unicode(req.getHeader('Content-Type') or 'application/octet-stream', 'ascii')
+        contentType = unicode(
+            req.getHeader('Content-Type') or 'application/octet-stream',
+            'ascii')
 
         contentMD5 = req.getHeader('Content-MD5')
         if contentMD5 is not None:
@@ -257,14 +259,10 @@ class ContentResource(Item):
     contentStore = dependsOn(ContentStore)
 
     def getObject(self, name):
-        def _trySibling(f):
-            f.trap(NonexistentObject)
-
         def _notFound(f):
             f.trap(NonexistentObject)
             return None
-
-        return self.contentStore.getObject(name).addErrback(_trySibling)
+        return self.contentStore.getSiblingObject(name).addErrback(_notFound)
 
 
     def childFactory(self, name):
