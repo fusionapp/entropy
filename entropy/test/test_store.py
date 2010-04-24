@@ -11,7 +11,8 @@ from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
 from nevow.static import File
 
-from entropy.store import ContentStore, ImmutableObject, ObjectCreator
+from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
+    MemoryObject)
 from entropy.errors import CorruptObject, NonexistentObject
 
 
@@ -66,12 +67,39 @@ class ContentStoreTests(TestCase):
         type and timestamp.
         """
         t1 = Time()
-        t2 = t1 + timedelta(seconds=30)
-        obj = self.contentStore._storeObject('blah', u'application/octet-stream', created=t1)
-        obj2 = self.contentStore._storeObject('blah', u'text/plain', created=t2)
+        t2 = t1 - timedelta(seconds=30)
+        obj = self.contentStore._storeObject('blah',
+                                             u'application/octet-stream',
+                                             created=t1)
+        obj2 = self.contentStore._storeObject('blah',
+                                              u'text/plain',
+                                              created=t2)
         self.assertIdentical(obj, obj2)
         self.assertEqual(obj.contentType, u'text/plain')
         self.assertEqual(obj.created, t2)
+
+        obj3 = self.contentStore._storeObject('blah',
+                                              u'text/plain')
+
+        self.assertTrue(obj.created > t2)
+
+
+    def test_importObject(self):
+        """
+        Importing an object stores an equivalent object in the local store.
+        """
+        created = Time()
+
+        obj1 = MemoryObject(hash=u'sha256',
+                            contentDigest=u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862',
+                            content=u'blahblah some data blahblah',
+                            created=created,
+                            contentType=u'application/octet-stream')
+        obj2 = self.contentStore.importObject(obj1)
+        self.assertEqual(obj1.objectId, obj2.objectId)
+        self.assertEqual(obj1.created, obj2.created)
+        self.assertEqual(obj1.contentType, obj2.contentType)
+        self.assertEqual(obj1.getContent(), obj2.getContent())
 
 
     def test_nonexistentObject(self):

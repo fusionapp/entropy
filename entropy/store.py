@@ -116,6 +116,9 @@ class ContentStore(Item):
 
         contentDigest = unicode(getHash(self.hash)(content).hexdigest(), 'ascii')
 
+        if created is None:
+            created = Time()
+
         obj = self.store.findUnique(ImmutableObject,
                                     AND(ImmutableObject.hash == self.hash,
                                         ImmutableObject.contentDigest == contentDigest),
@@ -129,11 +132,10 @@ class ContentStore(Item):
                                   contentDigest=contentDigest,
                                   hash=self.hash,
                                   content=contentFile.finalpath,
-                                  contentType=contentType)
+                                  contentType=contentType,
+                                  created=created)
         else:
             obj.contentType = contentType
-            if created is None:
-                created = Time()
             obj.created = created
 
         return obj
@@ -310,6 +312,12 @@ class ContentResource(Item):
 
 class MemoryObject(record('content hash contentDigest contentType created metadata', metadata={})):
     implements(IContentObject)
+
+
+    @property
+    def objectId(self):
+        return u'%s:%s' % (self.hash, self.contentDigest)
+
 
     def getContent(self):
         return self.content
