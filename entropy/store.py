@@ -40,6 +40,7 @@ from entropy.hash import getHash
 from entropy.util import deferred, getPageWithHeaders
 
 
+
 class ImmutableObject(Item):
     """
     An immutable object.
@@ -59,9 +60,11 @@ class ImmutableObject(Item):
     def metadata(self):
         return {}
 
+
     @property
     def objectId(self):
         return u'%s:%s' % (self.hash, self.contentDigest)
+
 
     def _getDigest(self):
         fp = self.content.open()
@@ -71,10 +74,12 @@ class ImmutableObject(Item):
         finally:
             fp.close()
 
+
     def verify(self):
         digest = self._getDigest()
         if self.contentDigest != digest:
             raise CorruptObject('expected: %r actual: %r' % (self.contentDigest, digest))
+
 
     def getContent(self):
         return self.content.getContent()
@@ -83,11 +88,14 @@ def objectResource(obj):
     """
     Adapt L{ImmutableObject) to L{IResource}.
     """
-    # XXX: Not sure if we should do this on every single resource retrieval.
     obj.verify()
-    return File(obj.content.path, defaultType=obj.contentType.encode('ascii'))
+    res = File(obj.content.path)
+    res.type = obj.contentType.encode('ascii')
+    res.encoding = None
+    return res
 
 registerAdapter(objectResource, ImmutableObject, IResource)
+
 
 
 class ContentStore(Item):
@@ -108,6 +116,9 @@ class ContentStore(Item):
 
         contentDigest = unicode(getHash(self.hash)(content).hexdigest(), 'ascii')
 
+        if created is None:
+            created = Time()
+
         obj = self.store.findUnique(ImmutableObject,
                                     AND(ImmutableObject.hash == self.hash,
                                         ImmutableObject.contentDigest == contentDigest),
@@ -121,14 +132,14 @@ class ContentStore(Item):
                                   contentDigest=contentDigest,
                                   hash=self.hash,
                                   content=contentFile.finalpath,
-                                  contentType=contentType)
+                                  contentType=contentType,
+                                  created=created)
         else:
             obj.contentType = contentType
-            if created is None:
-                created = Time()
             obj.created = created
 
         return obj
+
 
     def importObject(self, obj):
         """
@@ -142,6 +153,7 @@ class ContentStore(Item):
                                  obj.metadata,
                                  obj.created)
 
+
     @transacted
     def getSiblingObject(self, objectId):
         """
@@ -154,9 +166,6 @@ class ContentStore(Item):
 
         def _eb(f):
             f.trap(NonexistentObject)
-            return _tryNext()
-
-        def _tryNext():
             try:
                 remoteStore = siblings.next()
             except StopIteration:
@@ -164,7 +173,8 @@ class ContentStore(Item):
 
             return remoteStore.getObject(objectId).addCallbacks(self.importObject, _eb)
 
-        return _tryNext()
+        return self.getObject(objectId).addErrback(_eb)
+
 
     # IContentStore
 
@@ -172,6 +182,7 @@ class ContentStore(Item):
     def storeObject(self, content, contentType, metadata={}, created=None):
         obj = self._storeObject(content, contentType, metadata, created)
         return obj.objectId
+
 
     @deferred
     @transacted
@@ -186,6 +197,7 @@ class ContentStore(Item):
         return obj
 
 
+
 class ObjectCreator(object):
     """
     Resource for storing new objects.
@@ -197,10 +209,12 @@ class ObjectCreator(object):
     def __init__(self, contentStore):
         self.contentStore = contentStore
 
+
     # IResource
     def renderHTTP(self, ctx):
         req = IRequest(ctx)
         if req.method == 'GET':
+            req.setHeader('Content-Type', 'text/plain')
             return 'PUT data here to create an object.'
         elif req.method == 'PUT':
             return self.handlePUT(req)
@@ -209,9 +223,12 @@ class ObjectCreator(object):
             req.setHeader('Content-Type', 'text/plain')
             return 'Method not allowed'
 
+
     def handlePUT(self, req):
         data = req.content.read()
-        contentType = unicode(req.getHeader('Content-Type') or 'application/octet-stream', 'ascii')
+        contentType = unicode(
+            req.getHeader('Content-Type') or 'application/octet-stream',
+            'ascii')
 
         contentMD5 = req.getHeader('Content-MD5')
         if contentMD5 is not None:
@@ -229,6 +246,7 @@ class ObjectCreator(object):
         return d.addCallback(_cb)
 
 
+
 class ContentResource(Item):
     """
     Resource for accessing the content store.
@@ -241,15 +259,11 @@ class ContentResource(Item):
     contentStore = dependsOn(ContentStore)
 
     def getObject(self, name):
-        def _trySibling(f):
-            f.trap(NonexistentObject)
-            return self.contentStore.getSiblingObject(name).addErrback(_notFound)
-
         def _notFound(f):
             f.trap(NonexistentObject)
             return None
+        return self.contentStore.getSiblingObject(name).addErrback(_notFound)
 
-        return self.contentStore.getObject(name).addErrback(_trySibling)
 
     def childFactory(self, name):
         """
@@ -269,12 +283,14 @@ class ContentResource(Item):
             return self.getObject(name)
         return None
 
+
     # IResource
     def renderHTTP(self, ctx):
         """
         Nothing to see here.
         """
         return 'Entropy'
+
 
     def locateChild(self, ctx, segments):
         """
@@ -287,11 +303,19 @@ class ContentResource(Item):
         return NotFound
 
 
+
 class MemoryObject(record('content hash contentDigest contentType created metadata', metadata={})):
     implements(IContentObject)
 
+
+    @property
+    def objectId(self):
+        return u'%s:%s' % (self.hash, self.contentDigest)
+
+
     def getContent(self):
         return self.content
+
 
 
 class RemoteEntropyStore(Item):
@@ -308,6 +332,7 @@ class RemoteEntropyStore(Item):
         """
         return self.entropyURI + documentId
 
+
     # IContentStore
     def storeObject(self, content, contentType, metadata={}, created=None):
         digest = hashlib.md5(data).digest()
@@ -319,15 +344,11 @@ class RemoteEntropyStore(Item):
                                 'Content-MD5': b64encode(digest)}
                     ).addCallback(lambda url: unicode(url, 'ascii'))
 
+
     def getObject(self, objectId):
-        def _eb(f):
-            f.trap(eweb.Error)
-            if f.value.status == '404':
-                raise NonexistentObject(objectId)
-            return f
+        hash, contentDigest = objectId.split(':', 1)
 
         def _makeContentObject((data, headers)):
-            hash, contentDigest = objectId.split(':', 1)
             # XXX: Actually get the real creation time
             return MemoryObject(content=data,
                                 hash=hash,
@@ -335,6 +356,12 @@ class RemoteEntropyStore(Item):
                                 contentType=unicode(headers['content-type'][0], 'ascii'),
                                 metadata={},
                                 created=Time())
+
+        def _eb(f):
+            f.trap(eweb.Error)
+            if f.value.status == '404':
+                raise NonexistentObject(objectId)
+            return f
 
         return getPageWithHeaders(self.getURI(objectId)
                     ).addCallbacks(_makeContentObject, _eb)
