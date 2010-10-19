@@ -129,6 +129,7 @@ class StoreBackendTests(TestCase):
         self.testObject = self.store.findUnique(ImmutableObject)
 
         self.contentStore2 = ContentStore(store=self.store)
+        self.contentStore3 = ContentStore(store=self.store)
 
 
     def test_getSiblingExists(self):

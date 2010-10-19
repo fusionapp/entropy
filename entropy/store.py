@@ -34,7 +34,8 @@ from nevow.static import File, Data
 from nevow.rend import NotFound
 from nevow.url import URL
 
-from entropy.ientropy import IContentStore, IContentObject, ISiblingStore
+from entropy.ientropy import (IContentStore, IContentObject, ISiblingStore,
+    IBackendStore)
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.hash import getHash
 from entropy.util import deferred, getPageWithHeaders
@@ -78,7 +79,8 @@ class ImmutableObject(Item):
     def verify(self):
         digest = self._getDigest()
         if self.contentDigest != digest:
-            raise CorruptObject('expected: %r actual: %r' % (self.contentDigest, digest))
+            raise CorruptObject(
+                'expected: %r actual: %r' % (self.contentDigest, digest))
 
 
     def getContent(self):
@@ -114,17 +116,20 @@ class ContentStore(Item):
         if metadata != {}:
             raise NotImplementedError('metadata not yet supported')
 
-        contentDigest = unicode(getHash(self.hash)(content).hexdigest(), 'ascii')
+        contentDigest = getHash(self.hash)(content).hexdigest()
+        contentDigest = unicode(contentDigest, 'ascii')
 
         if created is None:
             created = Time()
 
-        obj = self.store.findUnique(ImmutableObject,
-                                    AND(ImmutableObject.hash == self.hash,
-                                        ImmutableObject.contentDigest == contentDigest),
-                                    default=None)
+        obj = self.store.findUnique(
+            ImmutableObject,
+            AND(ImmutableObject.hash == self.hash,
+                ImmutableObject.contentDigest == contentDigest),
+            default=None)
         if obj is None:
-            contentFile = self.store.newFile('objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
+            contentFile = self.store.newFile(
+                'objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
             contentFile.write(content)
             contentFile.close()
 
@@ -162,7 +167,9 @@ class ContentStore(Item):
         @returns: the local imported object.
         @type obj: ImmutableObject
         """
-        siblings = iter(list(self.store.powerupsFor(ISiblingStore)))
+        siblings = list(self.store.powerupsFor(ISiblingStore))
+        siblings.extend(self.store.powerupsFor(IBackendStore))
+        siblings = iter(siblings)
 
         def _eb(f):
             f.trap(NonexistentObject)
@@ -171,7 +178,9 @@ class ContentStore(Item):
             except StopIteration:
                 raise NonexistentObject(objectId)
 
-            return remoteStore.getObject(objectId).addCallbacks(self.importObject, _eb)
+            d = remoteStore.getObject(objectId)
+            d.addCallbacks(self.importObject, _eb)
+            return d
 
         return self.getObject(objectId).addErrback(_eb)
 
@@ -188,10 +197,11 @@ class ContentStore(Item):
     @transacted
     def getObject(self, objectId):
         hash, contentDigest = objectId.split(u':', 1)
-        obj = self.store.findUnique(ImmutableObject,
-                                    AND(ImmutableObject.hash == hash,
-                                        ImmutableObject.contentDigest == contentDigest),
-                                    default=None)
+        obj = self.store.findUnique(
+            ImmutableObject,
+            AND(ImmutableObject.hash == hash,
+                ImmutableObject.contentDigest == contentDigest),
+            default=None)
         if obj is None:
             raise NonexistentObject(objectId)
         return obj
@@ -304,7 +314,8 @@ class ContentResource(Item):
 
 
 
-class MemoryObject(record('content hash contentDigest contentType created metadata', metadata={})):
+class MemoryObject(record('content hash contentDigest contentType created '
+                          'metadata', metadata={})):
     implements(IContentObject)
 
 
@@ -324,7 +335,8 @@ class RemoteEntropyStore(Item):
     """
     implements(IContentStore)
 
-    entropyURI = text(allowNone=False, doc="""The URI of the Entropy service in use.""")
+    entropyURI = text(allowNone=False,
+                      doc="""The URI of the Entropy service in use.""")
 
     def getURI(self, documentId):
         """
@@ -350,12 +362,13 @@ class RemoteEntropyStore(Item):
 
         def _makeContentObject((data, headers)):
             # XXX: Actually get the real creation time
-            return MemoryObject(content=data,
-                                hash=hash,
-                                contentDigest=contentDigest,
-                                contentType=unicode(headers['content-type'][0], 'ascii'),
-                                metadata={},
-                                created=Time())
+            return MemoryObject(
+                content=data,
+                hash=hash,
+                contentDigest=contentDigest,
+                contentType=unicode(headers['content-type'][0], 'ascii'),
+                metadata={},
+                created=Time())
 
         def _eb(f):
             f.trap(eweb.Error)
