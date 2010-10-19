@@ -36,7 +36,7 @@ from nevow.url import URL
 
 from entropy.ientropy import (IContentStore, IContentObject, ISiblingStore,
     IBackendStore)
-from entropy.errors import CorruptObject, NonexistentObject
+from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
 from entropy.hash import getHash
 from entropy.util import deferred, getPageWithHeaders
 
@@ -245,7 +245,7 @@ class ObjectCreator(object):
             expectedHash = contentMD5.decode('base64')
             actualHash = hashlib.md5(data).digest()
             if expectedHash != actualHash:
-                raise ValueError('Expected hash %r does not match actual hash %r' % (expectedHash, actualHash))
+                raise DigestMismatch(expectedHash, actualHash)
 
         def _cb(objectId):
             req.setHeader('Content-Type', 'text/plain')
