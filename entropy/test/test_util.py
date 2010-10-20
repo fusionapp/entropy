@@ -65,4 +65,4 @@ class DeferredTests(TestCase):
         that exception.
         """
         d = self.assertFailure(testfn(42), ValueError)
-        return d.addCallback(lambda e: self.assertEqual(e.message, 'Oh noes'))
+        return d.addCallback(lambda e: self.assertIn('Oh noes', str(e)))

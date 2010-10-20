@@ -51,7 +51,7 @@ class ContentStoreTests(TestCase):
         """
         d = self.contentStore.storeObject('blah', 'blah', metadata={'blah': 'blah'})
         return self.assertFailure(d, NotImplementedError
-            ).addCallback(lambda e: self.assertSubstring('metadata', e.message))
+            ).addCallback(lambda e: self.assertSubstring('metadata', str(e)))
 
 
     def test_getObject(self):
