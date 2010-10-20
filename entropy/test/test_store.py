@@ -1,9 +1,11 @@
 from StringIO import StringIO
 from datetime import timedelta
+from functools import partial
 
 from epsilon.extime import Time
 
 from twisted.trial.unittest import TestCase
+from twisted.internet.defer import fail
 
 from axiom.store import Store
 
@@ -11,7 +13,7 @@ from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
 from nevow.static import File
 
-from entropy.ientropy import ISiblingStore
+from entropy.ientropy import ISiblingStore, IBackendStore
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
     MemoryObject)
@@ -129,7 +131,6 @@ class StoreBackendTests(TestCase):
         self.testObject = self.store.findUnique(ImmutableObject)
 
         self.contentStore2 = ContentStore(store=self.store)
-        self.contentStore3 = ContentStore(store=self.store)
 
 
     def test_getSiblingExists(self):
@@ -143,14 +144,8 @@ class StoreBackendTests(TestCase):
         d.addCallback(_cb)
         self.assertIdentical(self.o, self.testObject)
 
-
-    def test_getSiblingExistsRemote(self):
-        """
-        Calling getSiblingObject with an object ID that is missing locally, but
-        present in one of the sibling stores, will retrieve the object, as well
-        as inserting it into the local store.
-        """
-        self.store.powerUp(self.contentStore1, ISiblingStore)
+        
+    def _retrievalTest(self):
         d = self.contentStore2.getSiblingObject(self.testObject.objectId)
         def _cb(o):
             self.o = o
@@ -162,6 +157,57 @@ class StoreBackendTests(TestCase):
             self.o2 = o2
         d.addCallback(_cb)
         self.assertIdentical(self.o, self.o2)
+
+
+    def test_getSiblingExistsRemote(self):
+        """
+        Calling getSiblingObject with an object ID that is missing locally, but
+        present in one of the sibling stores, will retrieve the object, as well
+        as inserting it into the local store.
+        """
+        self.store.powerUp(self.contentStore1, ISiblingStore)
+        self._retrievalTest()
+
+
+    def test_getSiblingExistsBackend(self):
+        """
+        If an object is missing in local and sibling stores, but present in a
+        backend store, the object will be retrieved from the backend store.
+        """
+        self.store.powerUp(self.contentStore1, IBackendStore)
+        self._retrievalTest()
+
+
+    def test_siblingBeforeBackend(self):
+        """
+        When looking for a missing object, sibling stores are tried before
+        backend stores.
+        """
+        tried = []
+
+        def _getObject(self, objectId):
+            tried.append(self)
+            return fail(NonexistentObject(objectId))
+
+        siblingStore = self.contentStore1
+        object.__setattr__(
+            siblingStore,
+            'getObject',
+            partial(_getObject, 'sibling'))
+        self.store.powerUp(siblingStore, ISiblingStore)
+
+        backendStore = ContentStore(store=self.store)
+        object.__setattr__(
+            backendStore,
+            'getObject',
+            partial(_getObject, 'backend'))
+        self.store.powerUp(backendStore, IBackendStore)
+
+        def _cb(e):
+            self.assertEqual(tried, ['sibling', 'backend'])
+        return self.assertFailure(
+            self.contentStore2.getSiblingObject('sha256:aoeuaoeu'),
+            NonexistentObject).addCallback(_cb)
 
 
     def test_getSiblingMissing(self):
