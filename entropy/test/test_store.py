@@ -4,6 +4,8 @@ from functools import partial
 
 from epsilon.extime import Time
 
+from zope.interface import implements
+
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail
 
@@ -13,7 +15,7 @@ from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
 from nevow.static import File
 
-from entropy.ientropy import ISiblingStore, IBackendStore
+from entropy.ientropy import IContentStore, ISiblingStore, IBackendStore
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
     MemoryObject)
@@ -119,6 +121,28 @@ class ContentStoreTests(TestCase):
 
 
 
+class MockContentStore(object):
+    implements(IContentStore)
+
+    def __init__(self, events=None):
+        if events is None:
+            self.events = []
+        else:
+            self.events = events
+
+
+    def getObject(self, objectId):
+        self.events.append(('getObject', self, objectId))
+        return fail(NonexistentObject(objectId))
+
+
+    def storeObject(self, content, contentType, metadata={}, created=None):
+        self.events.append(
+            ('storeObject', self, content, contentType, metadata, created))
+        return success(u'sha256:FAKE')
+
+
+
 class StoreBackendTests(TestCase):
     """
     Tests for content store backend functionality.
@@ -183,30 +207,21 @@ class StoreBackendTests(TestCase):
         When looking for a missing object, sibling stores are tried before
         backend stores.
         """
-        tried = []
+        events = []
 
-        def _getObject(self, objectId):
-            tried.append(self)
-            return fail(NonexistentObject(objectId))
+        siblingStore = MockContentStore(events=events)
+        self.store.inMemoryPowerUp(siblingStore, ISiblingStore)
 
-        siblingStore = self.contentStore1
-        object.__setattr__(
-            siblingStore,
-            'getObject',
-            partial(_getObject, 'sibling'))
-        self.store.powerUp(siblingStore, ISiblingStore)
-
-        backendStore = ContentStore(store=self.store)
-        object.__setattr__(
-            backendStore,
-            'getObject',
-            partial(_getObject, 'backend'))
-        self.store.powerUp(backendStore, IBackendStore)
+        backendStore = MockContentStore(events=events)
+        self.store.inMemoryPowerUp(backendStore, IBackendStore)
 
         def _cb(e):
-            self.assertEqual(tried, ['sibling', 'backend'])
+            self.assertEqual(
+                events,
+                [('getObject', siblingStore, u'sha256:aoeuaoeu'),
+                 ('getObject', backendStore, u'sha256:aoeuaoeu')])
         return self.assertFailure(
-            self.contentStore2.getSiblingObject('sha256:aoeuaoeu'),
+            self.contentStore2.getSiblingObject(u'sha256:aoeuaoeu'),
             NonexistentObject).addCallback(_cb)
 
 
