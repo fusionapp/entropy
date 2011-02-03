@@ -7,9 +7,12 @@ from epsilon.extime import Time
 from zope.interface import implements
 
 from twisted.trial.unittest import TestCase
-from twisted.internet.defer import fail
+from twisted.internet.defer import fail, succeed
 
 from axiom.store import Store
+from axiom.item import Item
+from axiom.attributes import inmemory, integer
+from axiom.errors import ItemNotFound
 
 from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
@@ -18,7 +21,7 @@ from nevow.static import File
 from entropy.ientropy import IContentStore, ISiblingStore, IBackendStore
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
-    MemoryObject)
+    MemoryObject, PendingUpload)
 
 
 
@@ -121,15 +124,26 @@ class ContentStoreTests(TestCase):
 
 
 
-class MockContentStore(object):
+class MockContentStore(Item):
+    """
+    Mock content store that just logs calls.
+
+    @ivar events: A list of logged calls.
+    """
     implements(IContentStore)
 
-    def __init__(self, events=None):
+    dummy = integer()
+    events = inmemory()
+
+    def __init__(self, events=None, **kw):
+        super(MockContentStore, self).__init__(**kw)
         if events is None:
             self.events = []
         else:
             self.events = events
 
+
+    # IContentStore
 
     def getObject(self, objectId):
         self.events.append(('getObject', self, objectId))
@@ -139,7 +153,7 @@ class MockContentStore(object):
     def storeObject(self, content, contentType, metadata={}, created=None):
         self.events.append(
             ('storeObject', self, content, contentType, metadata, created))
-        return success(u'sha256:FAKE')
+        return succeed(u'sha256:FAKE')
 
 
 
@@ -168,7 +182,7 @@ class StoreBackendTests(TestCase):
         d.addCallback(_cb)
         self.assertIdentical(self.o, self.testObject)
 
-        
+
     def _retrievalTest(self):
         d = self.contentStore2.getSiblingObject(self.testObject.objectId)
         def _cb(o):
@@ -209,11 +223,11 @@ class StoreBackendTests(TestCase):
         """
         events = []
 
-        siblingStore = MockContentStore(events=events)
-        self.store.inMemoryPowerUp(siblingStore, ISiblingStore)
+        siblingStore = MockContentStore(store=self.store, events=events)
+        self.store.powerUp(siblingStore, ISiblingStore)
 
-        backendStore = MockContentStore(events=events)
-        self.store.inMemoryPowerUp(backendStore, IBackendStore)
+        backendStore = MockContentStore(store=self.store, events=events)
+        self.store.powerUp(backendStore, IBackendStore)
 
         def _cb(e):
             self.assertEqual(
@@ -235,6 +249,78 @@ class StoreBackendTests(TestCase):
         d = self.contentStore2.getSiblingObject(objectId)
         return self.assertFailure(d, NonexistentObject
             ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
+
+
+    def test_storeObject(self):
+        """
+        Storing an object also causes it to be scheduled for storing in all
+        backend stores.
+        """
+
+
+
+class PendingUploadTests(TestCase):
+    """
+    Tests for L{PendingUpload}.
+    """
+    def setUp(self):
+        self.store = Store(self.mktemp())
+        self.contentStore = ContentStore(store=self.store)
+        self.store.powerUp(self.contentStore, IContentStore)
+        self.contentStore.storeObject(content='somecontent',
+                                      contentType=u'application/octet-stream')
+        self.testObject = self.store.findUnique(ImmutableObject)
+        self.backendStore = MockContentStore(store=self.store)
+        self.pendingUpload = PendingUpload(store=self.store,
+                                           objectId=self.testObject.objectId,
+                                           backend=self.backendStore)
+
+
+    def test_successfulUpload(self):
+        """
+        When an upload attempt is made, the object is stored to the backend
+        store. If this succeeds, the L{PendingUpload} item is deleted.
+        """
+        def _cb(ign):
+            self.assertEqual(
+                self.backendStore.events,
+                [('storeObject',
+                  self.backendStore,
+                  'somecontent',
+                  u'application/octet-stream',
+                  {},
+                  self.testObject.created)])
+            self.assertRaises(ItemNotFound,
+                              self.store.findUnique,
+                              PendingUpload)
+
+        return self.pendingUpload.attemptUpload().addCallback(_cb)
+
+
+
+    def test_failedUpload(self):
+        """
+        When an upload attempt is made, the object is stored to the backend
+        store. If this fails, the L{PendingUpload} item has its scheduled time
+        updated.
+        """
+        def _storeObject(self, content, contentType, metadata={}, created=None):
+            raise ValueError('blah blah')
+
+        object.__setattr__(self.backendStore, 'storeObject', _storeObject)
+
+        scheduled = self.pendingUpload.scheduled
+
+        def _cb(ign):
+            self.assertIdentical(self.store.findUnique(PendingUpload),
+                                 self.pendingUpload)
+            self.assertEqual(self.pendingUpload.scheduled,
+                             scheduled + timedelta(minutes=2))
+            errors = self.flushLoggedErrors(ValueError)
+            self.assertEqual(len(errors), 1)
+
+        d = self.pendingUpload.attemptUpload()
+        return self.assertFailure(d, ValueError).addCallback(_cb)
 
 
 

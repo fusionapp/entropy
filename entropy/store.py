@@ -15,6 +15,7 @@ locally to ensure local view consistency, and then queued for backend storage
 in a reliable fashion.
 """
 import hashlib
+from datetime import timedelta
 
 from zope.interface import implements
 
@@ -22,11 +23,12 @@ from epsilon.extime import Time
 from epsilon.structlike import record
 
 from axiom.item import Item, transacted
-from axiom.attributes import text, path, timestamp, AND, inmemory
+from axiom.attributes import text, path, timestamp, AND, inmemory, reference
 from axiom.dependency import dependsOn
 
 from twisted.web import http, error as eweb
 from twisted.web.client import getPage
+from twisted.python import log
 from twisted.python.components import registerAdapter
 
 from nevow.inevow import IResource, IRequest
@@ -378,3 +380,33 @@ class RemoteEntropyStore(Item):
 
         return getPageWithHeaders(self.getURI(objectId)
                     ).addCallbacks(_makeContentObject, _eb)
+
+
+
+class PendingUpload(Item):
+    """
+    Marker for a pending upload to a backend store.
+    """
+    objectId = text(allowNone=False)
+    backend = reference(allowNone=False) # reftype=IBackendStore
+    scheduled = timestamp(allowNone=False, defaultFactory=lambda: Time())
+
+
+    def attemptUpload(self):
+        def _uploadObject(obj):
+            return self.backend.storeObject(
+                obj.getContent(),
+                obj.contentType,
+                obj.metadata,
+                obj.created)
+
+        def _reschedule(f):
+            log.err(f, 'Error uploading to backend store')
+            self.scheduled += timedelta(minutes=2)
+            return f
+
+        d = IContentStore(self.store).getObject(self.objectId)
+        d.addCallback(_uploadObject)
+        d.addCallback(lambda ign: self.deleteFromStore())
+        d.addErrback(_reschedule)
+        return d
