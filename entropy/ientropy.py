@@ -6,11 +6,12 @@ class IContentObject(Interface):
     """
     Immutable content object.
     """
-    hash = Attribute("""The hash function used to calculate the content digest.""")
-    contentDigest = Attribute("""A digest of the object content.""")
+    # hash = Attribute("""The hash function used to calculate the content digest.""")
+    # contentDigest = Attribute("""A digest of the object content.""")
     contentType = Attribute("""The MIME type describing the content of this object.""")
     created = Attribute("""Creation timestamp of this object.""")
     metadata = Attribute("""Object metadata.""")
+    objectId = Attribute("""Object id.""")
 
     def getContent(self):
         """
@@ -25,9 +26,12 @@ class IContentStore(Interface):
     """
     Interface for storing and retrieving immutable content objects.
     """
-    def storeObject(content, contentType, metadata={}, created=None):
+    def storeObject(objectId, content, contentType=None, metadata={}, created=None):
         """
         Store an object.
+
+        @param objectId: the object identifier.
+        @type objectId: C{str}
 
         @param content: the data to store.
         @type content: C{str}
@@ -45,7 +49,7 @@ class IContentStore(Interface):
         @rtype: C{Deferred<unicode>}
         """
 
-    def getObject(objectID):
+    def getObject(objectId):
         """
         Retrieve an object.
 

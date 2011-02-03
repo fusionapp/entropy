@@ -25,6 +25,7 @@ from epsilon.structlike import record
 from axiom.item import Item, transacted
 from axiom.attributes import text, path, timestamp, AND, inmemory, reference
 from axiom.dependency import dependsOn
+from axiom.upgrade import registerUpgrader
 
 from twisted.web import http, error as eweb
 from twisted.web.client import getPage
@@ -51,22 +52,20 @@ class ImmutableObject(Item):
     Immutable objects are addressed by content hash, and consist of the object
     data as a binary blob, and object key/value metadata pairs.
     """
+    schemaVersion = 2
+
     implements(IContentObject)
 
     hash = text(allowNone=False)
     contentDigest = text(allowNone=False)
     content = path(allowNone=False)
-    contentType = text(allowNone=False)
+    contentType = text(allowNone=True)
     created = timestamp(allowNone=False, defaultFactory=lambda: Time())
+    objectId = text(allowNone=False)
 
     @property
     def metadata(self):
         return {}
-
-
-    @property
-    def objectId(self):
-        return u'%s:%s' % (self.hash, self.contentDigest)
 
 
     def _getDigest(self):
@@ -87,6 +86,21 @@ class ImmutableObject(Item):
 
     def getContent(self):
         return self.content.getContent()
+
+
+def immutableObject1to2(old):
+    return old.upgradeVersion(
+        ImmutableObject.typeName, 1, 2,
+        hash=old.hash,
+        contentDigest=old.contentDigest,
+        content=old.content,
+        contentType=old.contentType,
+        created=old.created,
+        objectId=old.hash + u':' + old.contentDigest)
+
+registerUpgrader(immutableObject1to2, ImmutableObject.typeName, 1, 2)
+
+
 
 def objectResource(obj):
     """
@@ -111,7 +125,7 @@ class ContentStore(Item):
     hash = text(allowNone=False, default=u'sha256')
 
     @transacted
-    def _storeObject(self, content, contentType, metadata={}, created=None):
+    def _storeObject(self, objectId, content, contentType=None, metadata={}, created=None):
         """
         Do the actual work of synchronously storing the object.
         """
@@ -126,12 +140,10 @@ class ContentStore(Item):
 
         obj = self.store.findUnique(
             ImmutableObject,
-            AND(ImmutableObject.hash == self.hash,
-                ImmutableObject.contentDigest == contentDigest),
+            ImmutableObject.objectId == objectId,
             default=None)
         if obj is None:
-            contentFile = self.store.newFile(
-                'objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
+            contentFile = self.store.newFile('objects', 'immutable', objectId)
             contentFile.write(content)
             contentFile.close()
 
@@ -140,7 +152,8 @@ class ContentStore(Item):
                                   hash=self.hash,
                                   content=contentFile.finalpath,
                                   contentType=contentType,
-                                  created=created)
+                                  created=created,
+                                  objectId=objectId)
         else:
             obj.contentType = contentType
             obj.created = created
@@ -155,7 +168,8 @@ class ContentStore(Item):
         @param obj: the object to import.
         @type obj: ImmutableObject
         """
-        return self._storeObject(obj.getContent(),
+        return self._storeObject(obj.objectId,
+                                 obj.getContent(),
                                  obj.contentType,
                                  obj.metadata,
                                  obj.created)
@@ -190,19 +204,17 @@ class ContentStore(Item):
     # IContentStore
 
     @deferred
-    def storeObject(self, content, contentType, metadata={}, created=None):
-        obj = self._storeObject(content, contentType, metadata, created)
+    def storeObject(self, objectId, content, contentType=None, metadata={}, created=None):
+        obj = self._storeObject(objectId, content, contentType, metadata, created)
         return obj.objectId
 
 
     @deferred
     @transacted
     def getObject(self, objectId):
-        hash, contentDigest = objectId.split(u':', 1)
         obj = self.store.findUnique(
             ImmutableObject,
-            AND(ImmutableObject.hash == hash,
-                ImmutableObject.contentDigest == contentDigest),
+            ImmutableObject.objectId == objectId,
             default=None)
         if obj is None:
             raise NonexistentObject(objectId)
@@ -242,6 +254,8 @@ class ObjectCreator(object):
             req.getHeader('Content-Type') or 'application/octet-stream',
             'ascii')
 
+        contentDigest = getHash(self.contentStore.hash)(data).hexdigest()
+
         contentMD5 = req.getHeader('Content-MD5')
         if contentMD5 is not None:
             expectedHash = contentMD5.decode('base64')
@@ -254,7 +268,7 @@ class ObjectCreator(object):
             objectId = objectId.encode('ascii')
             return objectId
 
-        d = self.contentStore.storeObject(data, contentType)
+        d = self.contentStore.storeObject(u'%s:%s' % (self.contentStore.hash, contentDigest), data, contentType)
         return d.addCallback(_cb)
 
 
@@ -316,14 +330,9 @@ class ContentResource(Item):
 
 
 
-class MemoryObject(record('content hash contentDigest contentType created '
-                          'metadata', metadata={})):
+class MemoryObject(record('objectId content hash contentDigest contentType '
+                          'created metadata', metadata={})):
     implements(IContentObject)
-
-
-    @property
-    def objectId(self):
-        return u'%s:%s' % (self.hash, self.contentDigest)
 
 
     def getContent(self):
@@ -348,7 +357,7 @@ class RemoteEntropyStore(Item):
 
 
     # IContentStore
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def storeObject(self, objectId, content, contentType=None, metadata={}, created=None):
         digest = hashlib.md5(data).digest()
         return getPage((self.entropyURI + 'new').encode('ascii'),
                        method='PUT',
@@ -360,14 +369,13 @@ class RemoteEntropyStore(Item):
 
 
     def getObject(self, objectId):
-        hash, contentDigest = objectId.split(':', 1)
-
         def _makeContentObject((data, headers)):
             # XXX: Actually get the real creation time
             return MemoryObject(
+                objectId=objectId,
                 content=data,
-                hash=hash,
-                contentDigest=contentDigest,
+                hash=None,
+                contentDigest=None,
                 contentType=unicode(headers['content-type'][0], 'ascii'),
                 metadata={},
                 created=Time())
@@ -395,6 +403,7 @@ class PendingUpload(Item):
     def attemptUpload(self):
         def _uploadObject(obj):
             return self.backend.storeObject(
+                obj.objectId,
                 obj.getContent(),
                 obj.contentType,
                 obj.metadata,

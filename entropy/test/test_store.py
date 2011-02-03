@@ -42,11 +42,8 @@ class ContentStoreTests(TestCase):
         contentType = u'application/octet-stream'
         expectedDigest = u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862'
 
-        d = self.contentStore.storeObject(content, contentType)
-        def _cb(oid):
-            self.oid = oid
-        d.addCallback(_cb)
-        self.assertEqual(self.oid, u'sha256:' + expectedDigest)
+        d = self.contentStore.storeObject(u'athing', content, contentType)
+        return d.addCallback(lambda oid: self.assertEqual(oid, u'athing'))
 
 
     def test_metadata(self):
@@ -54,7 +51,7 @@ class ContentStoreTests(TestCase):
         Attempting to store metadata results in an exception as this is not yet
         implemented.
         """
-        d = self.contentStore.storeObject('blah', 'blah', metadata={'blah': 'blah'})
+        d = self.contentStore.storeObject(u'athing', 'blah', metadata={'blah': 'blah'})
         return self.assertFailure(d, NotImplementedError
             ).addCallback(lambda e: self.assertSubstring('metadata', str(e)))
 
@@ -67,8 +64,9 @@ class ContentStoreTests(TestCase):
                               hash=u'somehash',
                               contentDigest=u'quux',
                               content=self.store.newFilePath('foo'),
-                              contentType=u'application/octet-stream')
-        d = self.contentStore.getObject(u'somehash:quux')
+                              contentType=u'application/octet-stream',
+                              objectId=u'athing')
+        d = self.contentStore.getObject(u'athing')
         return d.addCallback(lambda obj2: self.assertIdentical(obj, obj2))
 
 
@@ -79,17 +77,20 @@ class ContentStoreTests(TestCase):
         """
         t1 = Time()
         t2 = t1 - timedelta(seconds=30)
-        obj = self.contentStore._storeObject('blah',
+        obj = self.contentStore._storeObject(u'athing',
+                                             'blah',
                                              u'application/octet-stream',
                                              created=t1)
-        obj2 = self.contentStore._storeObject('blah',
+        obj2 = self.contentStore._storeObject(u'athing',
+                                              'blah',
                                               u'text/plain',
                                               created=t2)
         self.assertIdentical(obj, obj2)
         self.assertEqual(obj.contentType, u'text/plain')
         self.assertEqual(obj.created, t2)
 
-        obj3 = self.contentStore._storeObject('blah',
+        obj3 = self.contentStore._storeObject(u'athing',
+                                              'blah',
                                               u'text/plain')
 
         self.assertTrue(obj.created > t2)
@@ -105,7 +106,8 @@ class ContentStoreTests(TestCase):
                             contentDigest=u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862',
                             content=u'blahblah some data blahblah',
                             created=created,
-                            contentType=u'application/octet-stream')
+                            contentType=u'application/octet-stream',
+                            objectId=u'athing')
         obj2 = self.contentStore.importObject(obj1)
         self.assertEqual(obj1.objectId, obj2.objectId)
         self.assertEqual(obj1.created, obj2.created)
@@ -150,10 +152,10 @@ class MockContentStore(Item):
         return fail(NonexistentObject(objectId))
 
 
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def storeObject(self, objectId, content, contentType=None, metadata={}, created=None):
         self.events.append(
-            ('storeObject', self, content, contentType, metadata, created))
-        return succeed(u'sha256:FAKE')
+            ('storeObject', self, objectId, content, contentType, metadata, created))
+        return succeed(u'objectId')
 
 
 
@@ -164,7 +166,8 @@ class StoreBackendTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore1 = ContentStore(store=self.store)
-        self.contentStore1.storeObject(content='somecontent',
+        self.contentStore1.storeObject(objectId=u'athing',
+                                       content='somecontent',
                                        contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
 
@@ -267,7 +270,8 @@ class PendingUploadTests(TestCase):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store)
         self.store.powerUp(self.contentStore, IContentStore)
-        self.contentStore.storeObject(content='somecontent',
+        self.contentStore.storeObject(objectId=u'athing',
+                                      content='somecontent',
                                       contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
         self.backendStore = MockContentStore(store=self.store)
@@ -286,6 +290,7 @@ class PendingUploadTests(TestCase):
                 self.backendStore.events,
                 [('storeObject',
                   self.backendStore,
+                  u'athing',
                   'somecontent',
                   u'application/octet-stream',
                   {},
@@ -304,7 +309,7 @@ class PendingUploadTests(TestCase):
         store. If this fails, the L{PendingUpload} item has its scheduled time
         updated.
         """
-        def _storeObject(self, content, contentType, metadata={}, created=None):
+        def _storeObject(self, objectId, content, contentType=None, metadata={}, created=None):
             raise ValueError('blah blah')
 
         object.__setattr__(self.backendStore, 'storeObject', _storeObject)
@@ -373,7 +378,8 @@ class ImmutableObjectTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store)
-        self.contentStore.storeObject(content='somecontent',
+        self.contentStore.storeObject(objectId=u'athing',
+                                      content='somecontent',
                                       contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
 
@@ -413,10 +419,9 @@ class ImmutableObjectTests(TestCase):
         """
         The object ID is composed of the digest function and content digest,
         separated by a colon.
+        FIXME: This is no longer the case.
         """
-        self.assertEqual(
-            self.testObject.objectId,
-            'sha256:d5a3477d91583e65a7aba6f6db7a53e2de739bc7bf8f4a08f0df0457b637f1fb')
+        self.assertEqual(self.testObject.objectId, u'athing')
 
 
     def test_adaptToResource(self):
