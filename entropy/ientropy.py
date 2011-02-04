@@ -72,3 +72,14 @@ class IBackendStore(IContentStore):
     """
     Backend content store.
     """
+
+
+
+class IUploadScheduler(Interface):
+    """
+    Manager of pending uploads.
+    """
+    def wake():
+        """
+        Notify the scheduler that new pending uploads have been created.
+        """
