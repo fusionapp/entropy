@@ -95,7 +95,18 @@ class IWriteLaterBackend(Interface):
 
 
 
-class IContentStore(IReadBackend, IWriteBackend):
+class IBackendStore(IReadBackend, IWriteBackend, IWriteLaterBackend):
     """
     Interface for storing and retrieving immutable content objects.
     """
+
+
+
+class IUploadScheduler(Interface):
+    """
+    Manager of pending uploads.
+    """
+    def wake():
+        """
+        Notify the scheduler that new pending uploads have been created.
+        """

@@ -27,12 +27,15 @@ from axiom.dependency import dependsOn
 
 from twisted.web import http
 from twisted.python import log
+from twisted.python.components import registerAdapter
+from twisted.application.service import Service, IService
 
 from nevow.inevow import IResource, IRequest
 from nevow.rend import NotFound
 
-from entropy.ientropy import IContentStore
+from entropy.ientropy import IBackendStore, IReadBackend, IUploadScheduler
 from entropy.errors import NonexistentObject, DigestMismatch
+from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
 from entropy.hash import getHash
 
 from entropy.backends.localaxiom import ContentStore
@@ -43,7 +46,7 @@ class ObjectCreator(object):
     """
     Resource for storing new objects.
 
-    @ivar contentStore: The {IContentStore} provider to create objects in.
+    @ivar contentStore: The {IBackendStore} provider to create objects in.
     """
     implements(IResource)
 
@@ -218,7 +221,7 @@ class PendingUpload(Item):
     """
     objectId = text(allowNone=False)
     backend = reference(allowNone=False) # reftype=IBackendStore
-    scheduled = timestamp(allowNone=False, defaultFactory=lambda: Time())
+    scheduled = timestamp(indexed=True, allowNone=False, defaultFactory=lambda: Time())
 
 
     def attemptUpload(self):
@@ -235,8 +238,104 @@ class PendingUpload(Item):
             self.scheduled += timedelta(minutes=2)
             return f
 
-        d = IContentStore(self.store).getObject(self.objectId)
+        d = IBackendStore(self.store).getObject(self.objectId)
         d.addCallback(_uploadObject)
         d.addCallback(lambda ign: self.deleteFromStore())
         d.addErrback(_reschedule)
         return d
+
+
+
+class UploadScheduler(Item):
+    """
+    Schedule upload attempts for pending uploads.
+    """
+    implements(IService, IUploadScheduler)
+    powerupInterfaces = [IService, IUploadScheduler]
+
+    dummy = text()
+
+    parent = inmemory()
+    name = inmemory()
+    running = inmemory()
+    _wakeCall = inmemory()
+    _clock = inmemory()
+
+    def activate(self):
+        self.parent = None
+        self.name = None
+        self.running = False
+        self._wakeCall = None
+
+        from twisted.internet import reactor
+        self._clock = reactor
+
+
+    def installed(self):
+        """
+        Callback invoked after this item has been installed on a store.
+
+        This is used to set the service parent to the store's service object.
+        """
+        self.setServiceParent(self.store)
+
+
+    def deleted(self):
+        """
+        Callback invoked after a transaction in which this item has been
+        deleted is committed.
+
+        This is used to remove this item from its service parent, if it has
+        one.
+        """
+        if self.parent is not None:
+            self.disownServiceParent()
+
+
+    def _scheduledWake(self):
+        self._wakeCall = None
+        self.wake()
+
+
+    def _cancelWake(self):
+        if self._wakeCall is not None:
+            self._wakeCall.cancel()
+            self._wakeCall = None
+
+
+    def _now(self):
+        return Time()
+
+
+    # IUploadScheduler
+
+    def wake(self):
+        self._cancelWake()
+        now = self._now()
+
+        # Find an upload we can try right now
+        p = self.store.findFirst(
+            PendingUpload,
+            PendingUpload.scheduled <= now)
+        if p is not None:
+            p.attemptUpload().addBoth(lambda ign: self.wake())
+        else:
+            # If there wasn't anything, schedule a wake for when there will be
+            # something
+            p = self.store.findFirst(
+                PendingUpload,
+                sort=PendingUpload.scheduled.ascending)
+            if p is not None:
+                self._clock.callLater((p.scheduled - now).seconds, self.wake)
+
+
+    # IService
+
+    def startService(self):
+        self.running = True
+        self._wakeCall = self._clock.callLater(0, self._scheduledWake)
+
+
+    def stopService(self):
+        self.running = False
+        self._cancelWake()

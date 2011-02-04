@@ -8,6 +8,7 @@ from zope.interface import implements
 
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
+from twisted.internet.task import Clock
 
 from axiom.store import Store
 from axiom.item import Item
@@ -18,9 +19,9 @@ from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
 from nevow.static import File
 
-from entropy.ientropy import IContentStore
+from entropy.ientropy import IBackendStore, IWriteLaterBackend
 from entropy.errors import CorruptObject, NonexistentObject
-from entropy.store import ObjectCreator, PendingUpload
+from entropy.store import ObjectCreator, PendingUpload, UploadScheduler
 from entropy.backends.localaxiom import ContentStore, ImmutableObject
 from entropy.backends.remoteentropy import MemoryObject
 
@@ -133,7 +134,7 @@ class MockContentStore(Item):
 
     @ivar events: A list of logged calls.
     """
-    implements(IContentStore)
+    implements(IBackendStore)
 
     dummy = integer()
     events = inmemory()
@@ -146,7 +147,7 @@ class MockContentStore(Item):
             self.events = events
 
 
-    # IContentStore
+    # IBackendStore
 
     def getObject(self, objectId):
         self.events.append(('getObject', self, objectId))
@@ -207,7 +208,7 @@ class StoreBackendTests(TestCase):
         present in one of the sibling stores, will retrieve the object, as well
         as inserting it into the local store.
         """
-        self.store.powerUp(self.contentStore1, IContentStore)
+        self.store.powerUp(self.contentStore1, IBackendStore)
         self._retrievalTest()
 
 
@@ -216,7 +217,7 @@ class StoreBackendTests(TestCase):
         Calling getSiblingObject with an object ID that is missing everywhere
         raises L{NonexistentObject}.
         """
-        self.store.powerUp(self.contentStore1, IContentStore)
+        self.store.powerUp(self.contentStore1, IBackendStore)
         objectId = u'sha256:NOSUCHOBJECT'
         d = self.contentStore2.getSiblingObject(objectId)
         return self.assertFailure(d, NonexistentObject
@@ -228,6 +229,31 @@ class StoreBackendTests(TestCase):
         Storing an object also causes it to be scheduled for storing in all
         backend stores.
         """
+        contentStore = ContentStore(store=self.store)
+        backendStore = MockContentStore(store=self.store)
+        self.store.powerUp(backendStore, IWriteLaterBackend)
+        backendStore2 = MockContentStore(store=self.store)
+        self.store.powerUp(backendStore2, IWriteLaterBackend)
+
+        contentStore.storeObject(objectId=u'athing',
+                                 content='somecontent',
+                                 contentType=u'application/octet-stream')
+        testObject = self.store.findUnique(ImmutableObject)
+        pu = list(self.store.query(PendingUpload))
+        self.assertEqual(len(pu), 2)
+        self.assertEqual(pu[0].objectId, testObject.objectId)
+        self.assertEqual(pu[1].objectId, testObject.objectId)
+        for p in pu:
+            if p.backend is backendStore:
+                break
+        else:
+            self.fail('No pending upload for backendStore')
+
+        for p in pu:
+            if p.backend is backendStore2:
+                break
+        else:
+            self.fail('No pending upload for backendStore2')
 
 
 
@@ -238,7 +264,7 @@ class PendingUploadTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store)
-        self.store.powerUp(self.contentStore, IContentStore)
+        self.store.powerUp(self.contentStore, IBackendStore)
         self.contentStore.storeObject(objectId=u'athing',
                                       content='somecontent',
                                       contentType=u'application/octet-stream')
@@ -269,7 +295,6 @@ class PendingUploadTests(TestCase):
                               PendingUpload)
 
         return self.pendingUpload.attemptUpload().addCallback(_cb)
-
 
 
     def test_failedUpload(self):
@@ -412,3 +437,86 @@ class ImmutableObjectTests(TestCase):
         """
         self.testObject.content.setContent('garbage!')
         self.assertRaises(CorruptObject, IResource, self.testObject)
+
+
+
+class UploadSchedulerTests(TestCase):
+    """
+    Tests for L{UploadScheduler}.
+    """
+    def setUp(self):
+        self.store = Store(self.mktemp())
+        self.scheduler = UploadScheduler(store=self.store)
+        self.clock = self.scheduler._clock = Clock()
+        self.contentStore = ContentStore(store=self.store)
+
+
+    def test_wakeOnStart(self):
+        self.scheduler.startService()
+        def _wake():
+            self.wokeUp = True
+        object.__setattr__(self.scheduler, 'wake', _wake)
+        self.clock.advance(1)
+        self.assertTrue(self.wokeUp)
+        self.assertIdentical(self.scheduler._wakeCall, None)
+
+
+    def test_cancelWake(self):
+        self.scheduler.startService()
+
+        self.scheduler._cancelWake()
+        self.assertIdentical(self.scheduler._wakeCall, None)
+        self.assertEqual(self.clock.getDelayedCalls(), [])
+
+        # Ensure _cancelWake is idempotent
+        self.scheduler._cancelWake()
+        self.assertIdentical(self.scheduler._wakeCall, None)
+        self.assertEqual(self.clock.getDelayedCalls(), [])
+
+
+    def _mkUpload(self, scheduled):
+        pendingUpload = PendingUpload(store=self.store,
+                                      objectId=u'aoeu',
+                                      backend=self.contentStore,
+                                      scheduled=scheduled)
+
+        def _attemptUpload():
+            self.uploadsAttempted += 1
+            pendingUpload.deleteFromStore()
+            return succeed(None)
+        object.__setattr__(pendingUpload, 'attemptUpload', _attemptUpload)
+        return pendingUpload
+
+
+    def test_wakeForOne(self):
+        now = Time()
+        object.__setattr__(self.scheduler, '_now', lambda: now)
+
+        self.uploadsAttempted = 0
+        pendingUpload = self._mkUpload(now)
+        self.assertEqual(self.uploadsAttempted, 0)
+        self.scheduler.wake()
+        self.assertEqual(self.uploadsAttempted, 1)
+        now += timedelta(seconds=1)
+        self.clock.advance(1)
+        self.assertEqual(self.uploadsAttempted, 1)
+
+
+    def test_wakeMulti(self):
+        now = Time()
+        object.__setattr__(self.scheduler, '_now', lambda: now)
+
+        self.uploadsAttempted = 0
+        pendingUpload = self._mkUpload(now)
+        pendingUpload2 = self._mkUpload(now)
+        pendingUpload3 = self._mkUpload(now + timedelta(seconds=5))
+        self.assertEqual(self.uploadsAttempted, 0)
+        self.scheduler.wake()
+        self.assertEqual(self.uploadsAttempted, 2)
+        now += timedelta(seconds=1)
+        self.clock.advance(1)
+        self.assertEqual(self.uploadsAttempted, 2)
+        now += timedelta(seconds=5)
+        self.clock.advance(5)
+        self.assertEqual(self.uploadsAttempted, 3)
+
