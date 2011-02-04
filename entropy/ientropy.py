@@ -2,12 +2,33 @@ from zope.interface import Interface, Attribute
 
 
 
+class IStorageClass(Interface):
+    """
+    Collection of backend data stores.
+    """
+    name = Attribute("""Storage class name.""")
+
+    def getReadBackends(self):
+        """
+        Get the read backends for this storage class.
+        """
+
+    def getWriteBackends(self):
+        """
+        Get the write backends for this storage class.
+        """
+
+    def getWriteLaterBackends(self):
+        """
+        Get the asynchronous background write backends for this storage class.
+        """
+
+
+
 class IContentObject(Interface):
     """
     Immutable content object.
     """
-    # hash = Attribute("""The hash function used to calculate the content digest.""")
-    # contentDigest = Attribute("""A digest of the object content.""")
     contentType = Attribute("""The MIME type describing the content of this object.""")
     created = Attribute("""Creation timestamp of this object.""")
     metadata = Attribute("""Object metadata.""")
@@ -22,9 +43,25 @@ class IContentObject(Interface):
 
 
 
-class IContentStore(Interface):
+class IReadBackend(Interface):
     """
-    Interface for storing and retrieving immutable content objects.
+    Interface for retrieving immutable content objects.
+    """
+    def getObject(objectId):
+        """
+        Retrieve an object.
+
+        @param objectId: the object identifier.
+        @type objectId: C{unicode}
+        @returns: the content object.
+        @rtype: C{Deferred<IContentObject>}
+        """
+
+
+
+class IWriteBackend(Interface):
+    """
+    Interface for storing immutable content objects.
     """
     def storeObject(objectId, content, contentType=None, metadata={}, created=None):
         """
@@ -49,26 +86,16 @@ class IContentStore(Interface):
         @rtype: C{Deferred<unicode>}
         """
 
-    def getObject(objectId):
-        """
-        Retrieve an object.
-
-        @param objectId: the object identifier.
-        @type objectId: C{unicode}
-        @returns: the content object.
-        @rtype: C{Deferred<IContentObject>}
-        """
 
 
-
-class ISiblingStore(IContentStore):
+class IWriteLaterBackend(Interface):
     """
-    Sibling content store.
+    Interface for storing immutable content objects at leisure.
     """
 
 
 
-class IBackendStore(IContentStore):
+class IContentStore(IReadBackend, IWriteBackend):
     """
-    Backend content store.
+    Interface for storing and retrieving immutable content objects.
     """

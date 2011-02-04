@@ -18,10 +18,11 @@ from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
 from nevow.static import File
 
-from entropy.ientropy import IContentStore, ISiblingStore, IBackendStore
+from entropy.ientropy import IContentStore
 from entropy.errors import CorruptObject, NonexistentObject
-from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
-    MemoryObject, PendingUpload)
+from entropy.store import ObjectCreator, PendingUpload
+from entropy.backends.localaxiom import ContentStore, ImmutableObject
+from entropy.backends.remoteentropy import MemoryObject
 
 
 
@@ -206,40 +207,8 @@ class StoreBackendTests(TestCase):
         present in one of the sibling stores, will retrieve the object, as well
         as inserting it into the local store.
         """
-        self.store.powerUp(self.contentStore1, ISiblingStore)
+        self.store.powerUp(self.contentStore1, IContentStore)
         self._retrievalTest()
-
-
-    def test_getSiblingExistsBackend(self):
-        """
-        If an object is missing in local and sibling stores, but present in a
-        backend store, the object will be retrieved from the backend store.
-        """
-        self.store.powerUp(self.contentStore1, IBackendStore)
-        self._retrievalTest()
-
-
-    def test_siblingBeforeBackend(self):
-        """
-        When looking for a missing object, sibling stores are tried before
-        backend stores.
-        """
-        events = []
-
-        siblingStore = MockContentStore(store=self.store, events=events)
-        self.store.powerUp(siblingStore, ISiblingStore)
-
-        backendStore = MockContentStore(store=self.store, events=events)
-        self.store.powerUp(backendStore, IBackendStore)
-
-        def _cb(e):
-            self.assertEqual(
-                events,
-                [('getObject', siblingStore, u'sha256:aoeuaoeu'),
-                 ('getObject', backendStore, u'sha256:aoeuaoeu')])
-        return self.assertFailure(
-            self.contentStore2.getSiblingObject(u'sha256:aoeuaoeu'),
-            NonexistentObject).addCallback(_cb)
 
 
     def test_getSiblingMissing(self):
@@ -247,7 +216,7 @@ class StoreBackendTests(TestCase):
         Calling getSiblingObject with an object ID that is missing everywhere
         raises L{NonexistentObject}.
         """
-        self.store.powerUp(self.contentStore1, ISiblingStore)
+        self.store.powerUp(self.contentStore1, IContentStore)
         objectId = u'sha256:NOSUCHOBJECT'
         d = self.contentStore2.getSiblingObject(objectId)
         return self.assertFailure(d, NonexistentObject
