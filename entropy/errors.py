@@ -25,6 +25,16 @@ class NonexistentObject(ValueError):
 
 
 
+class NonexistentStorageClass(ValueError):
+    """
+    The specified storage class does not exist.
+    """
+    def __init__(self, storageClassName):
+        ValueError.__init__(self, storageClassName)
+        self.storageClassName = storageClassName
+
+
+
 class DigestMismatch(ValueError):
     """
     The content did not match the expected digest.

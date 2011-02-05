@@ -29,16 +29,88 @@ from twisted.web import http
 from twisted.python import log
 from twisted.python.components import registerAdapter
 from twisted.application.service import Service, IService
+from twisted.internet.defer import DeferredList
 
 from nevow.inevow import IResource, IRequest
 from nevow.rend import NotFound
 
-from entropy.ientropy import IBackendStore, IReadBackend, IUploadScheduler
+from entropy.ientropy import (IBackendStore, IReadBackend, IWriteBackend,
+                              IWriteLaterBackend, IUploadScheduler, IStorageClass)
 from entropy.errors import NonexistentObject, DigestMismatch
 from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
 from entropy.hash import getHash
+from entropy.util import deferred
 
 from entropy.backends.localaxiom import ContentStore
+
+
+
+class StorageClass(Item):
+    implements(IStorageClass)
+
+    name = text(allowNone=False)
+
+
+    def getReadBackends(self):
+        return iter(self.powerupsFor(IReadBackend))
+
+
+    def getWriteBackends(self):
+        return iter(self.powerupsFor(IWriteBackend))
+
+
+    def getWriteLaterBackends(self):
+        return iter(self.powerupsFor(IWriteLaterBackend))
+
+
+    def getObject(self, objectId):
+        """
+        Find an object in one of the read stores and return it.
+
+        @returns: the retrieved object.
+        @type obj: ImmutableObject
+        """
+        backends = self.getReadBackends()
+
+        @deferred
+        def _getNothing(objectId):
+            raise NonexistentObject(objectId)
+
+        def _eb(f):
+            f.trap(NonexistentObject)
+            try:
+                backend = backends.next()
+            except StopIteration:
+                raise NonexistentObject(objectId)
+
+            d = backend.getObject(objectId)
+            d.addErrback(_eb)
+            return d
+
+        return _getNothing(objectId).addErrback(_eb)
+
+
+    def storeObject(self, objectId, content, contentType=None, metadata={}, created=None):
+        """
+        Store an object in all backends.
+        """
+        if metadata != {}:
+            raise NotImplementedError('metadata not yet supported')
+
+        results = []
+        for backend in self.getWriteBackends():
+            results.append(backend.storeObject(objectId,
+                                               content,
+                                               contentType,
+                                               metadata,
+                                               created))
+
+        for backend in self.getWriteLaterBackends():
+            PendingUpload(store=self.store,
+                          objectId=objectId,
+                          backend=backend)
+
+        return DeferredList(results, fireOnOneErrback=True)
 
 
 
@@ -112,13 +184,23 @@ class ContentResource(Item):
 
     addSlash = inmemory()
 
-    contentStore = dependsOn(ContentStore)
+    defaultStorageClass = dependsOn(StorageClass)
 
-    def getObject(self, name):
+    def getStorageClass(self, storageClassName):
+        if storageClassName is None:
+            return self.defaultStorageClass
+        for storageClass in self.store.powerupsFor(IStorageClass):
+            if storageClass.name == storageClassName:
+                return storageClass
+        raise NonexistentStorageClass(storageClassName)
+
+
+    def getObject(self, storageClassName, objectId):
         def _notFound(f):
             f.trap(NonexistentObject)
             return None
-        return self.contentStore.getSiblingObject(name).addErrback(_notFound)
+        d = self.getStorageClass(storageClassName).getObject(objectId)
+        return d.addErrback(_notFound)
 
 
     def childFactory(self, name):
@@ -136,7 +218,7 @@ class ContentResource(Item):
         elif name == 'new':
             return ObjectCreator(self.contentStore)
         else:
-            return self.getObject(name)
+            return self.getObject(None, name)
         return None
 
 

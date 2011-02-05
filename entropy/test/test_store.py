@@ -19,9 +19,9 @@ from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
 from nevow.static import File
 
-from entropy.ientropy import IBackendStore, IWriteLaterBackend
+from entropy.ientropy import IBackendStore, IWriteLaterBackend, IReadBackend, IWriteBackend
 from entropy.errors import CorruptObject, NonexistentObject
-from entropy.store import ObjectCreator, PendingUpload, UploadScheduler
+from entropy.store import ObjectCreator, PendingUpload, UploadScheduler, StorageClass
 from entropy.backends.localaxiom import ContentStore, ImmutableObject
 from entropy.backends.remoteentropy import MemoryObject
 
@@ -98,25 +98,6 @@ class ContentStoreTests(TestCase):
         self.assertTrue(obj.created > t2)
 
 
-    def test_importObject(self):
-        """
-        Importing an object stores an equivalent object in the local store.
-        """
-        created = Time()
-
-        obj1 = MemoryObject(hash=u'sha256',
-                            contentDigest=u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862',
-                            content=u'blahblah some data blahblah',
-                            created=created,
-                            contentType=u'application/octet-stream',
-                            objectId=u'athing')
-        obj2 = self.contentStore.importObject(obj1)
-        self.assertEqual(obj1.objectId, obj2.objectId)
-        self.assertEqual(obj1.created, obj2.created)
-        self.assertEqual(obj1.contentType, obj2.contentType)
-        self.assertEqual(obj1.getContent(), obj2.getContent())
-
-
     def test_nonexistentObject(self):
         """
         Retrieving a nonexistent object results in L{NonexistentObject}.
@@ -161,65 +142,61 @@ class MockContentStore(Item):
 
 
 
-class StoreBackendTests(TestCase):
+class StorageClassBackendTests(TestCase):
     """
-    Tests for content store backend functionality.
+    Tests for storage class backend functionality.
     """
     def setUp(self):
         self.store = Store(self.mktemp())
+        self.storageClass = StorageClass(store=self.store, name=u'testclass')
+
         self.contentStore1 = ContentStore(store=self.store)
+        self.storageClass.powerUp(self.contentStore1, IReadBackend, 10)
+        self.storageClass.powerUp(self.contentStore1, IWriteBackend, 10)
         self.contentStore1.storeObject(objectId=u'athing',
                                        content='somecontent',
                                        contentType=u'application/octet-stream')
-        self.testObject = self.store.findUnique(ImmutableObject)
+        self.testObject1 = self.store.findUnique(ImmutableObject, ImmutableObject.objectId == u'athing')
 
         self.contentStore2 = ContentStore(store=self.store)
+        self.storageClass.powerUp(self.contentStore2, IReadBackend, 5)
+        self.contentStore2.storeObject(objectId=u'anotherthing',
+                                       content='somemorecontent',
+                                       contentType=u'application/octet-stream')
+        self.testObject2 = self.store.findUnique(ImmutableObject, ImmutableObject.objectId == u'anotherthing')
 
 
-    def test_getSiblingExists(self):
+    def test_getObjectExistsFirst(self):
         """
-        Calling getSiblingObject with an object ID that is present in the local
-        store just returns the local object.
+        Calling getObject with an object ID that exists in the first store will
+        retrieve the object.
         """
-        d = self.contentStore1.getSiblingObject(self.testObject.objectId)
+        d = self.storageClass.getObject(self.testObject1.objectId)
         def _cb(o):
             self.o = o
         d.addCallback(_cb)
-        self.assertIdentical(self.o, self.testObject)
+        self.assertIdentical(self.o, self.testObject1)
 
 
-    def _retrievalTest(self):
-        d = self.contentStore2.getSiblingObject(self.testObject.objectId)
+    def test_getObjectExistsSecond(self):
+        """
+        Calling getObject with an object ID that exists in the second store will
+        retrieve the object.
+        """
+        d = self.storageClass.getObject(self.testObject2.objectId)
         def _cb(o):
             self.o = o
         d.addCallback(_cb)
-
-        self.assertEqual(self.o.getContent(), 'somecontent')
-        d = self.contentStore2.getObject(self.testObject.objectId)
-        def _cb(o2):
-            self.o2 = o2
-        d.addCallback(_cb)
-        self.assertIdentical(self.o, self.o2)
+        self.assertIdentical(self.o, self.testObject2)
 
 
-    def test_getSiblingExistsRemote(self):
+    def test_getObjectMissing(self):
         """
-        Calling getSiblingObject with an object ID that is missing locally, but
-        present in one of the sibling stores, will retrieve the object, as well
-        as inserting it into the local store.
-        """
-        self.store.powerUp(self.contentStore1, IBackendStore)
-        self._retrievalTest()
-
-
-    def test_getSiblingMissing(self):
-        """
-        Calling getSiblingObject with an object ID that is missing everywhere
+        Calling getObject with an object ID that is missing everywhere
         raises L{NonexistentObject}.
         """
-        self.store.powerUp(self.contentStore1, IBackendStore)
-        objectId = u'sha256:NOSUCHOBJECT'
-        d = self.contentStore2.getSiblingObject(objectId)
+        objectId = u'NOSUCHOBJECT'
+        d = self.storageClass.getObject(objectId)
         return self.assertFailure(d, NonexistentObject
             ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
 
@@ -229,16 +206,16 @@ class StoreBackendTests(TestCase):
         Storing an object also causes it to be scheduled for storing in all
         backend stores.
         """
-        contentStore = ContentStore(store=self.store)
         backendStore = MockContentStore(store=self.store)
-        self.store.powerUp(backendStore, IWriteLaterBackend)
+        self.storageClass.powerUp(backendStore, IWriteLaterBackend)
         backendStore2 = MockContentStore(store=self.store)
-        self.store.powerUp(backendStore2, IWriteLaterBackend)
+        self.storageClass.powerUp(backendStore2, IWriteLaterBackend)
 
-        contentStore.storeObject(objectId=u'athing',
-                                 content='somecontent',
-                                 contentType=u'application/octet-stream')
-        testObject = self.store.findUnique(ImmutableObject)
+        self.storageClass.storeObject(objectId=u'athirdthing',
+                                      content='somecontent',
+                                      contentType=u'application/octet-stream')
+        testObject = self.store.findUnique(ImmutableObject,
+                                           ImmutableObject.objectId == u'athirdthing')
         pu = list(self.store.query(PendingUpload))
         self.assertEqual(len(pu), 2)
         self.assertEqual(pu[0].objectId, testObject.objectId)
