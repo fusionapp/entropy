@@ -1,6 +1,5 @@
 from StringIO import StringIO
 from datetime import timedelta
-from functools import partial
 
 from epsilon.extime import Time
 
@@ -52,7 +51,8 @@ class ContentStoreTests(TestCase):
         Attempting to store metadata results in an exception as this is not yet
         implemented.
         """
-        d = self.contentStore.storeObject(u'athing', 'blah', metadata={'blah': 'blah'})
+        d = self.contentStore.storeObject(
+            u'athing', 'blah', metadata={'blah': 'blah'})
         return self.assertFailure(d, NotImplementedError
             ).addCallback(lambda e: self.assertSubstring('metadata', str(e)))
 
@@ -90,9 +90,7 @@ class ContentStoreTests(TestCase):
         self.assertEqual(obj.contentType, u'text/plain')
         self.assertEqual(obj.created, t2)
 
-        obj3 = self.contentStore._storeObject(u'athing',
-                                              'blah',
-                                              u'text/plain')
+        self.contentStore._storeObject(u'athing', 'blah')
 
         self.assertTrue(obj.created > t2)
 
@@ -195,9 +193,9 @@ class StoreBackendTests(TestCase):
 
         self.assertEqual(self.o.getContent(), 'somecontent')
         d = self.contentStore2.getObject(self.testObject.objectId)
-        def _cb(o2):
+        def _cb2(o2):
             self.o2 = o2
-        d.addCallback(_cb)
+        d.addCallback(_cb2)
         self.assertIdentical(self.o, self.o2)
 
 
@@ -524,7 +522,7 @@ class UploadSchedulerTests(TestCase):
         object.__setattr__(self.scheduler, '_now', lambda: now)
 
         self.uploadsAttempted = 0
-        pendingUpload = self._mkUpload(now)
+        self._mkUpload(now)
         self.assertEqual(self.uploadsAttempted, 0)
         self.scheduler.wake()
         self.assertEqual(self.uploadsAttempted, 1)
@@ -538,9 +536,10 @@ class UploadSchedulerTests(TestCase):
         object.__setattr__(self.scheduler, '_now', lambda: now)
 
         self.uploadsAttempted = 0
-        pendingUpload = self._mkUpload(now)
-        pendingUpload2 = self._mkUpload(now)
-        pendingUpload3 = self._mkUpload(now + timedelta(seconds=5))
+        self._mkUpload(now)
+        self._mkUpload(now)
+        self._mkUpload(now + timedelta(seconds=5))
+
         self.assertEqual(self.uploadsAttempted, 0)
         self.scheduler.wake()
         self.assertEqual(self.uploadsAttempted, 2)
