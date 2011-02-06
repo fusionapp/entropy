@@ -328,7 +328,7 @@ class PendingUpload(Item):
 
 
 
-class UploadScheduler(Item):
+class UploadScheduler(Item, Service):
     """
     Schedule upload attempts for pending uploads.
     """

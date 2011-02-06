@@ -1,6 +1,5 @@
 from StringIO import StringIO
 from datetime import timedelta
-from functools import partial
 
 from epsilon.extime import Time
 
@@ -53,7 +52,8 @@ class ContentStoreTests(TestCase):
         Attempting to store metadata results in an exception as this is not yet
         implemented.
         """
-        d = self.contentStore.storeObject(u'athing', 'blah', metadata={'blah': 'blah'})
+        d = self.contentStore.storeObject(
+            u'athing', 'blah', metadata={'blah': 'blah'})
         return self.assertFailure(d, NotImplementedError
             ).addCallback(lambda e: self.assertSubstring('metadata', str(e)))
 
@@ -91,9 +91,7 @@ class ContentStoreTests(TestCase):
         self.assertEqual(obj.contentType, u'text/plain')
         self.assertEqual(obj.created, t2)
 
-        obj3 = self.contentStore._storeObject(u'athing',
-                                              'blah',
-                                              u'text/plain')
+        self.contentStore._storeObject(u'athing', 'blah')
 
         self.assertTrue(obj.created > t2)
 
@@ -156,14 +154,16 @@ class StorageClassBackendTests(TestCase):
         self.contentStore1.storeObject(objectId=u'athing',
                                        content='somecontent',
                                        contentType=u'application/octet-stream')
-        self.testObject1 = self.store.findUnique(ImmutableObject, ImmutableObject.objectId == u'athing')
+        self.testObject1 = self.store.findUnique(ImmutableObject,
+                                                 ImmutableObject.objectId == u'athing')
 
         self.contentStore2 = ContentStore(store=self.store)
         self.storageClass.powerUp(self.contentStore2, IReadBackend, 5)
         self.contentStore2.storeObject(objectId=u'anotherthing',
                                        content='somemorecontent',
                                        contentType=u'application/octet-stream')
-        self.testObject2 = self.store.findUnique(ImmutableObject, ImmutableObject.objectId == u'anotherthing')
+        self.testObject2 = self.store.findUnique(ImmutableObject,
+                                                 ImmutableObject.objectId == u'anotherthing')
 
 
     def test_getObjectExistsFirst(self):
@@ -470,7 +470,7 @@ class UploadSchedulerTests(TestCase):
         object.__setattr__(self.scheduler, '_now', lambda: now)
 
         self.uploadsAttempted = 0
-        pendingUpload = self._mkUpload(now)
+        self._mkUpload(now)
         self.assertEqual(self.uploadsAttempted, 0)
         self.scheduler.wake()
         self.assertEqual(self.uploadsAttempted, 1)
@@ -484,9 +484,10 @@ class UploadSchedulerTests(TestCase):
         object.__setattr__(self.scheduler, '_now', lambda: now)
 
         self.uploadsAttempted = 0
-        pendingUpload = self._mkUpload(now)
-        pendingUpload2 = self._mkUpload(now)
-        pendingUpload3 = self._mkUpload(now + timedelta(seconds=5))
+        self._mkUpload(now)
+        self._mkUpload(now)
+        self._mkUpload(now + timedelta(seconds=5))
+
         self.assertEqual(self.uploadsAttempted, 0)
         self.scheduler.wake()
         self.assertEqual(self.uploadsAttempted, 2)
