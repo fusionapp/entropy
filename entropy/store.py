@@ -27,7 +27,6 @@ from axiom.dependency import dependsOn
 
 from twisted.web import http
 from twisted.python import log
-from twisted.python.components import registerAdapter
 from twisted.application.service import Service, IService
 from twisted.internet.defer import DeferredList
 
@@ -36,8 +35,7 @@ from nevow.rend import NotFound
 
 from entropy.ientropy import (IBackendStore, IReadBackend, IWriteBackend,
                               IWriteLaterBackend, IUploadScheduler, IStorageClass)
-from entropy.errors import NonexistentObject, DigestMismatch
-from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
+from entropy.errors import NonexistentObject, NonexistentStorageClass, DigestMismatch
 from entropy.hash import getHash
 from entropy.util import deferred
 

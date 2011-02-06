@@ -22,7 +22,6 @@ from entropy.ientropy import IBackendStore, IWriteLaterBackend, IReadBackend, IW
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import ObjectCreator, PendingUpload, UploadScheduler, StorageClass
 from entropy.backends.localaxiom import ContentStore, ImmutableObject
-from entropy.backends.remoteentropy import MemoryObject
 
 
 
@@ -41,7 +40,6 @@ class ContentStoreTests(TestCase):
         """
         content = 'blahblah some data blahblah'
         contentType = u'application/octet-stream'
-        expectedDigest = u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862'
 
         d = self.contentStore.storeObject(u'athing', content, contentType)
         return d.addCallback(lambda oid: self.assertEqual(oid, u'athing'))
