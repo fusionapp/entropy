@@ -12,7 +12,9 @@ class HashingTests(TestCase):
         """
         Retrieving the sha256 hash function succeeds.
         """
-        hash = getHash('sha256')
+        getHash('sha256')
+        self.assertTrue(callable(hash))
+
 
     def test_invalidHash(self):
         """

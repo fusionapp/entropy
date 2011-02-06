@@ -33,9 +33,8 @@ from twisted.python.components import registerAdapter
 from twisted.application.service import Service, IService
 
 from nevow.inevow import IResource, IRequest
-from nevow.static import File, Data
+from nevow.static import File
 from nevow.rend import NotFound
-from nevow.url import URL
 
 from entropy.ientropy import (IContentStore, IContentObject, ISiblingStore,
     IBackendStore, IUploadScheduler)
@@ -354,6 +353,7 @@ class RemoteEntropyStore(Item):
 
 
     # IContentStore
+
     def storeObject(self, content, contentType, metadata={}, created=None):
         digest = hashlib.md5(data).digest()
         return getPage((self.entropyURI + 'new').encode('ascii'),
@@ -419,7 +419,7 @@ class PendingUpload(Item):
 
 
 
-class UploadScheduler(Item):
+class UploadScheduler(Item, Service):
     """
     Schedule upload attempts for pending uploads.
     """
