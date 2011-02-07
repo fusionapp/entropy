@@ -14,127 +14,86 @@ from axiom.item import Item
 from axiom.attributes import inmemory, integer
 from axiom.errors import ItemNotFound
 
-from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
-from nevow.static import File
 
-from entropy.ientropy import IBackendStore, IWriteLaterBackend, IReadBackend, IWriteBackend
-from entropy.errors import CorruptObject, NonexistentObject
+from entropy.ientropy import (IContentObject, IBackendStore,
+                              IWriteLaterBackend, IReadBackend, IWriteBackend)
+from entropy.errors import NonexistentObject
 from entropy.store import ObjectCreator, PendingUpload, UploadScheduler, StorageClass
 from entropy.backends.localaxiom import ContentStore, ImmutableObject
 
 
 
-class ContentStoreTests(TestCase):
+class MockContentObject(object):
     """
-    Tests for L{ContentStore}.
+    Immutable content object.
     """
-    def setUp(self):
-        self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+    implements(IContentObject)
+
+    contentType = None
+    created = None
+    metadata = None
+    objectId = None
+
+    def __init__(self, objectId, content, contentType=None, metadata=None, created=None):
+        self.objectId = objectId
+        self.content = content
+        self.contentType = contentType
+        self.metadata = {}
+        if metadata is not None:
+            self.metadata = metadata
+        self.created = None
 
 
-    def test_storeObject(self):
-        """
-        Test storing an object.
-        """
-        content = 'blahblah some data blahblah'
-        contentType = u'application/octet-stream'
-
-        d = self.contentStore.storeObject(u'athing', content, contentType)
-        return d.addCallback(lambda oid: self.assertEqual(oid, u'athing'))
-
-
-    def test_metadata(self):
-        """
-        Attempting to store metadata results in an exception as this is not yet
-        implemented.
-        """
-        d = self.contentStore.storeObject(
-            u'athing', 'blah', metadata={'blah': 'blah'})
-        return self.assertFailure(d, NotImplementedError
-            ).addCallback(lambda e: self.assertSubstring('metadata', str(e)))
-
-
-    def test_getObject(self):
-        """
-        Test retrieving object.
-        """
-        obj = ImmutableObject(store=self.store,
-                              hash=u'somehash',
-                              contentDigest=u'quux',
-                              content=self.store.newFilePath('foo'),
-                              contentType=u'application/octet-stream',
-                              objectId=u'athing')
-        d = self.contentStore.getObject(u'athing')
-        return d.addCallback(lambda obj2: self.assertIdentical(obj, obj2))
-
-
-    def test_updateObject(self):
-        """
-        Storing an object that is already in the store just updates the content
-        type and timestamp.
-        """
-        t1 = Time()
-        t2 = t1 - timedelta(seconds=30)
-        obj = self.contentStore._storeObject(u'athing',
-                                             'blah',
-                                             u'application/octet-stream',
-                                             created=t1)
-        obj2 = self.contentStore._storeObject(u'athing',
-                                              'blah',
-                                              u'text/plain',
-                                              created=t2)
-        self.assertIdentical(obj, obj2)
-        self.assertEqual(obj.contentType, u'text/plain')
-        self.assertEqual(obj.created, t2)
-
-        self.contentStore._storeObject(u'athing', 'blah')
-
-        self.assertTrue(obj.created > t2)
-
-
-    def test_nonexistentObject(self):
-        """
-        Retrieving a nonexistent object results in L{NonexistentObject}.
-        """
-        objectId = u'sha256:NOSUCHOBJECT'
-        d = self.contentStore.getObject(objectId)
-        return self.assertFailure(d, NonexistentObject
-            ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
+    def getContent(self):
+        return self.content
 
 
 
-class MockContentStore(Item):
+class MockBackendStore(Item):
     """
     Mock content store that just logs calls.
 
     @ivar events: A list of logged calls.
+    @ivar objects: A dict of content objects.
     """
     implements(IBackendStore)
 
     dummy = integer()
     events = inmemory()
+    objects = inmemory()
 
-    def __init__(self, events=None, **kw):
-        super(MockContentStore, self).__init__(**kw)
+    def __init__(self, events=None, objects=None, **kw):
+        super(MockBackendStore, self).__init__(**kw)
         if events is None:
             self.events = []
         else:
             self.events = events
+        if objects is None:
+            self.objects = {}
+        else:
+            self.objects = objects
 
 
     # IBackendStore
 
     def getObject(self, objectId):
         self.events.append(('getObject', self, objectId))
-        return fail(NonexistentObject(objectId))
+        obj = self.objects.get(objectId)
+        if obj is None:
+            return fail(NonexistentObject(objectId))
+        return obj
 
 
     def storeObject(self, objectId, content, contentType=None, metadata={}, created=None):
         self.events.append(
             ('storeObject', self, objectId, content, contentType, metadata, created))
-        return succeed(u'objectId')
+        self.objects[objectId] = MockContentObject(objectId,
+                                                   content,
+                                                   contentType,
+                                                   metadata,
+                                                   created)
+        return succeed(objectId)
 
 
 
@@ -204,9 +163,9 @@ class StorageClassBackendTests(TestCase):
         Storing an object also causes it to be scheduled for storing in all
         backend stores.
         """
-        backendStore = MockContentStore(store=self.store)
+        backendStore = MockBackendStore(store=self.store)
         self.storageClass.powerUp(backendStore, IWriteLaterBackend)
-        backendStore2 = MockContentStore(store=self.store)
+        backendStore2 = MockBackendStore(store=self.store)
         self.storageClass.powerUp(backendStore2, IWriteLaterBackend)
 
         self.storageClass.storeObject(objectId=u'athirdthing',
@@ -244,7 +203,7 @@ class PendingUploadTests(TestCase):
                                       content='somecontent',
                                       contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
-        self.backendStore = MockContentStore(store=self.store)
+        self.backendStore = MockBackendStore(store=self.store)
         self.pendingUpload = PendingUpload(store=self.store,
                                            objectId=self.testObject.objectId,
                                            backend=self.backendStore)
@@ -304,8 +263,10 @@ class ObjectCreatorTests(TestCase):
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store, hash=u'sha256')
-        self.creator = ObjectCreator(self.contentStore)
+        self.storageClass = StorageClass(store=self.store)
+        self.backendStore = MockBackendStore(store=self.store)
+        self.storageClass.powerUp(self.backendStore, IWriteBackend)
+        self.creator = ObjectCreator(self.storageClass, u'athing')
 
 
     def test_correctContentMD5(self):
@@ -337,81 +298,6 @@ class ObjectCreatorTests(TestCase):
         req = FakeRequest()
         req.content = StringIO('wrongdata')
         return self.creator.handlePUT(req)
-
-
-
-class ImmutableObjectTests(TestCase):
-    """
-    Tests for L{ImmutableObject}.
-    """
-    def setUp(self):
-        self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store)
-        self.contentStore.storeObject(objectId=u'athing',
-                                      content='somecontent',
-                                      contentType=u'application/octet-stream')
-        self.testObject = self.store.findUnique(ImmutableObject)
-
-
-    def test_metadata(self):
-        """
-        Metadata is not yet supported, so L{ImmutableObject.metadata} should be
-        an empty dict.
-        """
-        self.assertEqual(self.testObject.metadata, {})
-
-
-    def test_verify(self):
-        """
-        Verification should succeed when the object contents has not been
-        altered.
-        """
-        self.testObject.verify()
-
-
-    def test_verifyDamaged(self):
-        """
-        Verification should fail if the object contents is modified.
-        """
-        self.testObject.content.setContent('garbage!')
-        self.assertRaises(CorruptObject, self.testObject.verify)
-
-
-    def test_getContent(self):
-        """
-        L{ImmutableObject.getContent} returns the contents of the object.
-        """
-        self.assertEqual(self.testObject.getContent(), 'somecontent')
-
-
-    def test_objectId(self):
-        """
-        The object ID is composed of the digest function and content digest,
-        separated by a colon.
-        FIXME: This is no longer the case.
-        """
-        self.assertEqual(self.testObject.objectId, u'athing')
-
-
-    def test_adaptToResource(self):
-        """
-        Adapting L{ImmutableObject} to L{IResource} gives us a L{File} instance
-        pointing at the on-disk blob.
-        """
-        res = IResource(self.testObject)
-        self.assertIsInstance(res, File)
-        self.assertEqual(res.fp, self.testObject.content)
-        self.assertEqual(res.type, 'application/octet-stream')
-        self.assertEqual(res.encoding, None)
-
-
-    def test_adaptDamagedObject(self):
-        """
-        Adapting L{ImmutableObject} to L{IResource} verifies the object
-        contents.
-        """
-        self.testObject.content.setContent('garbage!')
-        self.assertRaises(CorruptObject, IResource, self.testObject)
 
 
 

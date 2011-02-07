@@ -120,7 +120,7 @@ class ObjectCreator(object):
     """
     implements(IResource)
 
-    def __init__(self, storageClass, objectId=None):
+    def __init__(self, storageClass, objectId):
         self.storageClass = storageClass
         self.objectId = objectId
 
