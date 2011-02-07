@@ -8,11 +8,8 @@ import os.path
 
 from zope.interface import implements
 
-from epsilon.extime import Time
-
 from axiom.item import Item, transacted
-from axiom.attributes import text, path, timestamp
-from axiom.upgrade import registerUpgrader
+from axiom.attributes import text
 
 from twisted.python import log
 from twisted.python.components import registerAdapter
@@ -22,8 +19,7 @@ from nevow.inevow import IResource
 from nevow.static import File
 
 from entropy.ientropy import IBackendStore, IContentObject
-from entropy.errors import CorruptObject, NonexistentObject
-from entropy.hash import getHash
+from entropy.errors import NonexistentObject
 from entropy.util import deferred
 
 

@@ -36,10 +36,7 @@ from nevow.rend import NotFound
 from entropy.ientropy import (IBackendStore, IReadBackend, IWriteBackend,
                               IWriteLaterBackend, IUploadScheduler, IStorageClass)
 from entropy.errors import NonexistentObject, NonexistentStorageClass, DigestMismatch
-from entropy.hash import getHash
 from entropy.util import deferred
-
-from entropy.backends.localaxiom import ContentStore
 
 
 
@@ -152,9 +149,6 @@ class ObjectCreator(object):
 
     def handlePUT(self, req):
         data = req.content.read()
-        # if self.objectId is None:
-        #     contentDigest = getHash(self.contentStore.hash)(data).hexdigest()
-        #     self.objectId = u'%s:%s' % (self.contentStore.hash, contentDigest)
         return self.putObject(self.objectId, data, req)
 
 

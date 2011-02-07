@@ -6,7 +6,7 @@ from epsilon.extime import Time
 from zope.interface import implements
 
 from twisted.trial.unittest import TestCase
-from twisted.internet.defer import fail, succeed
+from twisted.internet.defer import succeed
 from twisted.internet.task import Clock
 
 from axiom.store import Store
@@ -17,7 +17,7 @@ from axiom.errors import ItemNotFound
 from nevow.testutil import FakeRequest
 
 from entropy.ientropy import (IContentObject, IBackendStore,
-                              IWriteLaterBackend, IReadBackend, IWriteBackend)
+                              IWriteLaterBackend, IWriteBackend)
 from entropy.errors import NonexistentObject
 from entropy.store import ObjectCreator, PendingUpload, UploadScheduler, StorageClass
 from entropy.util import deferred
