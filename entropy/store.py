@@ -111,6 +111,13 @@ class StorageClass(Item):
         return DeferredList(results, fireOnOneErrback=True)
 
 
+    def addBackend(self, backend, priority, *interfaces):
+        if not interfaces:
+            interfaces = [IReadBackend, IWriteBackend]
+        for interface in interfaces:
+            self.powerUp(backend, interface, priority)
+
+
 
 class ObjectCreator(object):
     """

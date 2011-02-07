@@ -20,7 +20,7 @@ from entropy.ientropy import (IContentObject, IBackendStore,
                               IWriteLaterBackend, IReadBackend, IWriteBackend)
 from entropy.errors import NonexistentObject
 from entropy.store import ObjectCreator, PendingUpload, UploadScheduler, StorageClass
-from entropy.backends.localaxiom import ContentStore, ImmutableObject
+from entropy.util import deferred
 
 
 
@@ -69,19 +69,20 @@ class MockBackendStore(Item):
             self.events = []
         else:
             self.events = events
-        if objects is None:
-            self.objects = {}
-        else:
-            self.objects = objects
+        self.objects = {}
+        if objects is not None:
+            for obj in objects:
+                self.objects[obj.objectId] = obj
 
 
     # IBackendStore
 
+    @deferred
     def getObject(self, objectId):
         self.events.append(('getObject', self, objectId))
         obj = self.objects.get(objectId)
         if obj is None:
-            return fail(NonexistentObject(objectId))
+            raise NonexistentObject(objectId)
         return obj
 
 
@@ -105,22 +106,16 @@ class StorageClassBackendTests(TestCase):
         self.store = Store(self.mktemp())
         self.storageClass = StorageClass(store=self.store, name=u'testclass')
 
-        self.contentStore1 = ContentStore(store=self.store)
-        self.storageClass.powerUp(self.contentStore1, IReadBackend, 10)
-        self.storageClass.powerUp(self.contentStore1, IWriteBackend, 10)
-        self.contentStore1.storeObject(objectId=u'athing',
-                                       content='somecontent',
-                                       contentType=u'application/octet-stream')
-        self.testObject1 = self.store.findUnique(ImmutableObject,
-                                                 ImmutableObject.objectId == u'athing')
+        self.testObject1 = MockContentObject(u'thing1', 'somecontent')
+        self.testObject2 = MockContentObject(u'thing2', 'somemorecontent')
 
-        self.contentStore2 = ContentStore(store=self.store)
-        self.storageClass.powerUp(self.contentStore2, IReadBackend, 5)
-        self.contentStore2.storeObject(objectId=u'anotherthing',
-                                       content='somemorecontent',
-                                       contentType=u'application/octet-stream')
-        self.testObject2 = self.store.findUnique(ImmutableObject,
-                                                 ImmutableObject.objectId == u'anotherthing')
+        self.backendStore1 = MockBackendStore(store=self.store,
+                                              objects=[self.testObject1])
+        self.storageClass.addBackend(self.backendStore1, 10)
+
+        self.backendStore2 = MockBackendStore(store=self.store,
+                                              objects=[self.testObject2])
+        self.storageClass.addBackend(self.backendStore2, 5)
 
 
     def test_getObjectExistsFirst(self):
@@ -168,11 +163,9 @@ class StorageClassBackendTests(TestCase):
         backendStore2 = MockBackendStore(store=self.store)
         self.storageClass.powerUp(backendStore2, IWriteLaterBackend)
 
-        self.storageClass.storeObject(objectId=u'athirdthing',
-                                      content='somecontent',
-                                      contentType=u'application/octet-stream')
-        testObject = self.store.findUnique(ImmutableObject,
-                                           ImmutableObject.objectId == u'athirdthing')
+        testObject = MockContentObject(u'athirdthing', 'differentcontent')
+        self.storageClass.storeObject(testObject.objectId, testObject.getContent())
+
         pu = list(self.store.query(PendingUpload))
         self.assertEqual(len(pu), 2)
         self.assertEqual(pu[0].objectId, testObject.objectId)
@@ -197,12 +190,12 @@ class PendingUploadTests(TestCase):
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store)
-        self.store.powerUp(self.contentStore, IBackendStore)
-        self.contentStore.storeObject(objectId=u'athing',
-                                      content='somecontent',
-                                      contentType=u'application/octet-stream')
-        self.testObject = self.store.findUnique(ImmutableObject)
+        self.testObject = MockContentObject(objectId=u'athing',
+                                            content='somecontent',
+                                            contentType=u'application/octet-stream')
+        self.localStore = MockBackendStore(store=self.store, objects=[self.testObject])
+        self.store.powerUp(self.localStore, IBackendStore)
+
         self.backendStore = MockBackendStore(store=self.store)
         self.pendingUpload = PendingUpload(store=self.store,
                                            objectId=self.testObject.objectId,
@@ -309,7 +302,7 @@ class UploadSchedulerTests(TestCase):
         self.store = Store(self.mktemp())
         self.scheduler = UploadScheduler(store=self.store)
         self.clock = self.scheduler._clock = Clock()
-        self.contentStore = ContentStore(store=self.store)
+        self.localStore = MockBackendStore(store=self.store)
 
 
     def test_wakeOnStart(self):
@@ -338,7 +331,7 @@ class UploadSchedulerTests(TestCase):
     def _mkUpload(self, scheduled):
         pendingUpload = PendingUpload(store=self.store,
                                       objectId=u'aoeu',
-                                      backend=self.contentStore,
+                                      backend=self.localStore,
                                       scheduled=scheduled)
 
         def _attemptUpload():
