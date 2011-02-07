@@ -46,7 +46,7 @@ from entropy.backends.localaxiom import ContentStore
 class StorageClass(Item):
     implements(IStorageClass)
 
-    name = text(allowNone=False)
+    name = text()
 
 
     def getReadBackends(self):
@@ -116,12 +116,12 @@ class ObjectCreator(object):
     """
     Resource for storing new objects.
 
-    @ivar contentStore: The {IBackendStore} provider to create objects in.
+    @ivar sotrageClass: The {IStorageClass} provider to create objects in.
     """
     implements(IResource)
 
-    def __init__(self, contentStore, objectId=None):
-        self.contentStore = contentStore
+    def __init__(self, storageClass, objectId=None):
+        self.storageClass = storageClass
         self.objectId = objectId
 
 
@@ -145,9 +145,9 @@ class ObjectCreator(object):
 
     def handlePUT(self, req):
         data = req.content.read()
-        if self.objectId is None:
-            contentDigest = getHash(self.contentStore.hash)(data).hexdigest()
-            self.objectId = u'%s:%s' % (self.contentStore.hash, contentDigest)
+        # if self.objectId is None:
+        #     contentDigest = getHash(self.contentStore.hash)(data).hexdigest()
+        #     self.objectId = u'%s:%s' % (self.contentStore.hash, contentDigest)
         return self.putObject(self.objectId, data, req)
 
 
@@ -163,12 +163,16 @@ class ObjectCreator(object):
             if expectedHash != actualHash:
                 raise DigestMismatch(expectedHash, actualHash)
 
-        def _cb(objectId):
+        def _cb(storeResults):
+            objectId = None
+            for (success, objid) in storeResults:
+                if not success:
+                    raise Exception("Store failed.")
+                objectId = objid
             req.setHeader('Content-Type', 'text/plain')
-            objectId = objectId.encode('ascii')
-            return objectId
+            return objectId.encode('ascii')
 
-        d = self.contentStore.storeObject(objectId, data, contentType)
+        d = self.storageClass.storeObject(objectId, data, contentType)
         return d.addCallback(_cb)
 
 
@@ -214,7 +218,7 @@ class ContentResource(Item):
         if name == '':
             return self
         elif name == 'new':
-            return ObjectCreator(self.contentStore)
+            return ObjectCreator(self.getStorageClass(None))
         else:
             return self.getObject(None, name)
         return None
@@ -239,6 +243,10 @@ class ContentResource(Item):
         return NotFound
 
 
+def _init(sc):
+    sc.name = u'default'
+    return sc
+
 
 class IdContentResource(Item):
     """
@@ -249,13 +257,23 @@ class IdContentResource(Item):
 
     addSlash = inmemory()
 
-    contentStore = dependsOn(ContentStore)
+    defaultStorageClass = dependsOn(StorageClass, _init)
 
-    def getObject(self, name):
+    def getStorageClass(self, storageClassName):
+        if storageClassName is None:
+            return self.defaultStorageClass
+        for storageClass in self.store.powerupsFor(IStorageClass):
+            if storageClass.name == storageClassName:
+                return storageClass
+        raise NonexistentStorageClass(storageClassName)
+
+
+    def getObject(self, storageClassName, objectId):
         def _notFound(f):
             f.trap(NonexistentObject)
             return None
-        return self.contentStore.getSiblingObject(name).addErrback(_notFound)
+        d = self.getStorageClass(storageClassName).getObject(objectId)
+        return d.addErrback(_notFound)
 
 
     def childFactory(self, name, method):
@@ -269,9 +287,9 @@ class IdContentResource(Item):
         if name == '':
             return self
         elif method in ['PUT', 'POST']:
-            return ObjectCreator(self.contentStore, unicode(name, 'ascii'))
+            return ObjectCreator(self.getStorageClass(None), unicode(name, 'ascii'))
         else:
-            return self.getObject(unicode(name, 'ascii'))
+            return self.getObject(None, unicode(name, 'ascii'))
         return None
 
 
