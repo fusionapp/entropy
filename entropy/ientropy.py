@@ -75,7 +75,7 @@ class IUploadScheduler(Interface):
     """
     Manager of pending uploads.
     """
-    def wake():
+    def scheduleUpload(objectId, backend):
         """
-        Notify the scheduler that new pending uploads have been created.
+        Notify the scheduler that an object needs to be uploaded to a backend.
         """
