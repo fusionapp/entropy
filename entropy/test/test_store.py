@@ -7,7 +7,6 @@ from zope.interface import implements
 
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
-from twisted.internet.task import Clock
 
 from axiom.store import Store
 from axiom.item import Item
@@ -22,7 +21,7 @@ from entropy.ientropy import (
     IContentStore, ISiblingStore, IBackendStore, IUploadScheduler)
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
-    MemoryObject, _PendingUpload, UploadScheduler)
+    MemoryObject, _PendingUpload)
 
 
 

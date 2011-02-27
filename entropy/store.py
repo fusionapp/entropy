@@ -20,7 +20,6 @@ from datetime import timedelta
 from zope.interface import implements
 
 from epsilon.extime import Time
-from epsilon.structlike import record
 
 from axiom.iaxiom import IScheduler
 from axiom.item import Item, transacted
@@ -31,7 +30,6 @@ from twisted.web import http, error as eweb
 from twisted.web.client import getPage
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.application.service import Service, IService
 
 from nevow.inevow import IResource, IRequest
 from nevow.static import File
@@ -41,7 +39,7 @@ from entropy.ientropy import (IContentStore, IContentObject, ISiblingStore,
     IBackendStore, IUploadScheduler)
 from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
 from entropy.hash import getHash
-from entropy.util import deferred, getPageWithHeaders
+from entropy.util import deferred, getPageWithHeaders, MemoryObject
 
 
 
@@ -321,21 +319,6 @@ class ContentResource(Item):
 
 
 
-class MemoryObject(record('content hash contentDigest contentType created '
-                          'metadata', metadata={})):
-    implements(IContentObject)
-
-
-    @property
-    def objectId(self):
-        return u'%s:%s' % (self.hash, self.contentDigest)
-
-
-    def getContent(self):
-        return self.content
-
-
-
 class RemoteEntropyStore(Item):
     """
     IContentStore implementation for remote Entropy services.
@@ -427,7 +410,7 @@ class _PendingUpload(Item):
 
 
 
-class UploadScheduler(Item, Service):
+class UploadScheduler(Item):
     """
     Schedule upload attempts for pending uploads.
     """
