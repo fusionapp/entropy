@@ -30,6 +30,7 @@ from twisted.web import http, error as eweb
 from twisted.web.client import getPage
 from twisted.python import log
 from twisted.python.components import registerAdapter
+from twisted.internet.defer import succeed
 
 from nevow.inevow import IResource, IRequest
 from nevow.static import File
@@ -106,6 +107,7 @@ class ContentStore(Item):
     Manager for stored objects.
     """
     implements(IContentStore)
+    powerupInterfaces = [IContentStore]
 
     hash = text(allowNone=False, default=u'sha256')
 
@@ -390,7 +392,8 @@ class _PendingUpload(Item):
                 obj.getContent(),
                 obj.contentType,
                 obj.metadata,
-                obj.created)
+                obj.created,
+                objectId=self.objectId)
 
         def _reschedule(f):
             log.err(f, 'Error uploading to backend store')
@@ -398,7 +401,9 @@ class _PendingUpload(Item):
             self.schedule()
             return f
 
-        d = IContentStore(self.store).getObject(self.objectId)
+        d = succeed(None)
+        d.addCallback(
+            lambda ign: IContentStore(self.store).getObject(self.objectId))
         d.addCallback(_uploadObject)
         d.addCallback(lambda ign: self.deleteFromStore())
         d.addErrback(_reschedule)
