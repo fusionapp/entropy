@@ -19,9 +19,9 @@ class S3Store(Item):
     """
     implements(IContentStore)
 
-    accessKey = text(allowNone=False)
-    secretKey = text(allowNone=False)
-    bucket = text(allowNone=False)
+    accessKey = text(allowNone=False, doc="AWS access key.")
+    secretKey = text(allowNone=False, doc="AWS secret key.)
+    bucket = text(allowNone=False, doc="Name of S3 bucket used for storage.")
 
     def _getClient(self):
         creds = AWSCredentials(
