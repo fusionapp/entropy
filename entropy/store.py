@@ -403,6 +403,8 @@ class _PendingUpload(Item):
                 objectId=self.objectId)
 
         def _reschedule(f):
+            # We do this instead of returning a Time from attemptUpload,
+            # because that can only be done synchronously.
             log.err(f, 'Error uploading object %r to backend store %r' % (
                 self.objectId, self.backend))
             self.scheduled += timedelta(minutes=2)
