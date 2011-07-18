@@ -322,6 +322,12 @@ class _PendingUploadTests(TestCase):
         When an upload attempt is made, the object is stored to the backend
         store. If this succeeds, the L{_PendingUpload} item is deleted.
         """
+        storeObject = self.backendStore.storeObject
+        def _storeObject(content, contentType, metadata={}, created=None,
+                         objectId=None):
+            return storeObject(content, contentType, metadata, created)
+        object.__setattr__(self.backendStore, 'storeObject', _storeObject)
+
         def _cb(ign):
             self.assertEqual(
                 self.backendStore.events,
@@ -344,9 +350,9 @@ class _PendingUploadTests(TestCase):
         store. If this fails, the L{_PendingUpload} item has its scheduled time
         updated.
         """
-        def _storeObject(self, content, contentType, metadata={}, created=None):
+        def _storeObject(content, contentType, metadata={}, created=None,
+                         objectId=None):
             raise ValueError('blah blah')
-
         object.__setattr__(self.backendStore, 'storeObject', _storeObject)
 
         scheduled = self.pendingUpload.scheduled
