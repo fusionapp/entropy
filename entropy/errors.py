@@ -38,7 +38,8 @@ class DigestMismatch(ValueError):
 
 
     def __repr__(self):
-        return '<DigestMismatch expected=%r actual=%r>'
+        return '<DigestMismatch expected=%r actual=%r>' % (
+            self.expected, self.actual)
 
 
     def __str__(self):
