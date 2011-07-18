@@ -380,13 +380,20 @@ class _PendingUpload(Item):
     """
     objectId = text(allowNone=False)
     backend = reference(allowNone=False) # reftype=IBackendStore
-    scheduled = timestamp(indexed=True, allowNone=False, defaultFactory=lambda: Time())
+    scheduled = timestamp(
+        indexed=True, allowNone=False, defaultFactory=lambda: Time())
 
     def run(self):
         self.attemptUpload()
 
 
     def attemptUpload(self):
+        """
+        Attempt an upload of an object to a backend store.
+
+        If the upload fails, it will be rescheduled; if it succeeds, this item
+        will be deleted.
+        """
         def _uploadObject(obj):
             return self.backend.storeObject(
                 obj.getContent(),
@@ -396,7 +403,8 @@ class _PendingUpload(Item):
                 objectId=self.objectId)
 
         def _reschedule(f):
-            log.err(f, 'Error uploading to backend store')
+            log.err(f, 'Error uploading object %r to backend store %r' % (
+                self.objectId, self.backend))
             self.scheduled += timedelta(minutes=2)
             self.schedule()
             return f

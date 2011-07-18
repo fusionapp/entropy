@@ -24,6 +24,9 @@ class S3Store(Item):
     bucket = text(allowNone=False, doc="Name of S3 bucket used for storage.")
 
     def _getClient(self):
+        """
+        Build a txAWS S3 client using our stored credentials.
+        """
         creds = AWSCredentials(
             access_key=self.accessKey.encode('utf-8'),
             secret_key=self.secretKey.encode('utf-8'))
