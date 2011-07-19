@@ -148,6 +148,8 @@ class ContentStore(Item):
 
         scheduler = IUploadScheduler(self.store, None)
         for backend in self.store.powerupsFor(IBackendStore):
+            if scheduler is None:
+                raise RuntimeError('No upload scheduler configured')
             scheduler.scheduleUpload(obj.objectId, backend)
 
         return obj
