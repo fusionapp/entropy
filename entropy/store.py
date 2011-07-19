@@ -15,29 +15,32 @@ locally to ensure local view consistency, and then queued for backend storage
 in a reliable fashion.
 """
 import hashlib
+from datetime import timedelta
 
 from zope.interface import implements
 
 from epsilon.extime import Time
-from epsilon.structlike import record
 
+from axiom.iaxiom import IScheduler
 from axiom.item import Item, transacted
-from axiom.attributes import text, path, timestamp, AND, inmemory
+from axiom.attributes import text, path, timestamp, AND, inmemory, reference
 from axiom.dependency import dependsOn
 
 from twisted.web import http, error as eweb
 from twisted.web.client import getPage
+from twisted.python import log
 from twisted.python.components import registerAdapter
+from twisted.internet.defer import succeed
 
 from nevow.inevow import IResource, IRequest
-from nevow.static import File, Data
+from nevow.static import File
 from nevow.rend import NotFound
-from nevow.url import URL
 
-from entropy.ientropy import IContentStore, IContentObject, ISiblingStore
-from entropy.errors import CorruptObject, NonexistentObject
+from entropy.ientropy import (IContentStore, IContentObject, ISiblingStore,
+    IBackendStore, IUploadScheduler)
+from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
 from entropy.hash import getHash
-from entropy.util import deferred, getPageWithHeaders
+from entropy.util import deferred, getPageWithHeaders, MemoryObject
 
 
 
@@ -78,7 +81,8 @@ class ImmutableObject(Item):
     def verify(self):
         digest = self._getDigest()
         if self.contentDigest != digest:
-            raise CorruptObject('expected: %r actual: %r' % (self.contentDigest, digest))
+            raise CorruptObject(
+                'expected: %r actual: %r' % (self.contentDigest, digest))
 
 
     def getContent(self):
@@ -103,6 +107,7 @@ class ContentStore(Item):
     Manager for stored objects.
     """
     implements(IContentStore)
+    powerupInterfaces = [IContentStore]
 
     hash = text(allowNone=False, default=u'sha256')
 
@@ -114,17 +119,20 @@ class ContentStore(Item):
         if metadata != {}:
             raise NotImplementedError('metadata not yet supported')
 
-        contentDigest = unicode(getHash(self.hash)(content).hexdigest(), 'ascii')
+        contentDigest = getHash(self.hash)(content).hexdigest()
+        contentDigest = unicode(contentDigest, 'ascii')
 
         if created is None:
             created = Time()
 
-        obj = self.store.findUnique(ImmutableObject,
-                                    AND(ImmutableObject.hash == self.hash,
-                                        ImmutableObject.contentDigest == contentDigest),
-                                    default=None)
+        obj = self.store.findUnique(
+            ImmutableObject,
+            AND(ImmutableObject.hash == self.hash,
+                ImmutableObject.contentDigest == contentDigest),
+            default=None)
         if obj is None:
-            contentFile = self.store.newFile('objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
+            contentFile = self.store.newFile(
+                'objects', 'immutable', '%s:%s' % (self.hash, contentDigest))
             contentFile.write(content)
             contentFile.close()
 
@@ -137,6 +145,12 @@ class ContentStore(Item):
         else:
             obj.contentType = contentType
             obj.created = created
+
+        scheduler = IUploadScheduler(self.store, None)
+        for backend in self.store.powerupsFor(IBackendStore):
+            if scheduler is None:
+                raise RuntimeError('No upload scheduler configured')
+            scheduler.scheduleUpload(obj.objectId, backend)
 
         return obj
 
@@ -162,7 +176,9 @@ class ContentStore(Item):
         @returns: the local imported object.
         @type obj: ImmutableObject
         """
-        siblings = iter(list(self.store.powerupsFor(ISiblingStore)))
+        siblings = list(self.store.powerupsFor(ISiblingStore))
+        siblings.extend(self.store.powerupsFor(IBackendStore))
+        siblings = iter(siblings)
 
         def _eb(f):
             f.trap(NonexistentObject)
@@ -171,7 +187,9 @@ class ContentStore(Item):
             except StopIteration:
                 raise NonexistentObject(objectId)
 
-            return remoteStore.getObject(objectId).addCallbacks(self.importObject, _eb)
+            d = remoteStore.getObject(objectId)
+            d.addCallbacks(self.importObject, _eb)
+            return d
 
         return self.getObject(objectId).addErrback(_eb)
 
@@ -188,10 +206,11 @@ class ContentStore(Item):
     @transacted
     def getObject(self, objectId):
         hash, contentDigest = objectId.split(u':', 1)
-        obj = self.store.findUnique(ImmutableObject,
-                                    AND(ImmutableObject.hash == hash,
-                                        ImmutableObject.contentDigest == contentDigest),
-                                    default=None)
+        obj = self.store.findUnique(
+            ImmutableObject,
+            AND(ImmutableObject.hash == hash,
+                ImmutableObject.contentDigest == contentDigest),
+            default=None)
         if obj is None:
             raise NonexistentObject(objectId)
         return obj
@@ -235,7 +254,7 @@ class ObjectCreator(object):
             expectedHash = contentMD5.decode('base64')
             actualHash = hashlib.md5(data).digest()
             if expectedHash != actualHash:
-                raise ValueError('Expected hash %r does not match actual hash %r' % (expectedHash, actualHash))
+                raise DigestMismatch(expectedHash, actualHash)
 
         def _cb(objectId):
             req.setHeader('Content-Type', 'text/plain')
@@ -304,27 +323,14 @@ class ContentResource(Item):
 
 
 
-class MemoryObject(record('content hash contentDigest contentType created metadata', metadata={})):
-    implements(IContentObject)
-
-
-    @property
-    def objectId(self):
-        return u'%s:%s' % (self.hash, self.contentDigest)
-
-
-    def getContent(self):
-        return self.content
-
-
-
 class RemoteEntropyStore(Item):
     """
     IContentStore implementation for remote Entropy services.
     """
     implements(IContentStore)
 
-    entropyURI = text(allowNone=False, doc="""The URI of the Entropy service in use.""")
+    entropyURI = text(allowNone=False,
+                      doc="""The URI of the Entropy service in use.""")
 
     def getURI(self, documentId):
         """
@@ -334,6 +340,7 @@ class RemoteEntropyStore(Item):
 
 
     # IContentStore
+
     def storeObject(self, content, contentType, metadata={}, created=None):
         digest = hashlib.md5(data).digest()
         return getPage((self.entropyURI + 'new').encode('ascii'),
@@ -350,12 +357,13 @@ class RemoteEntropyStore(Item):
 
         def _makeContentObject((data, headers)):
             # XXX: Actually get the real creation time
-            return MemoryObject(content=data,
-                                hash=hash,
-                                contentDigest=contentDigest,
-                                contentType=unicode(headers['content-type'][0], 'ascii'),
-                                metadata={},
-                                created=Time())
+            return MemoryObject(
+                content=data,
+                hash=hash,
+                contentDigest=contentDigest,
+                contentType=unicode(headers['content-type'][0], 'ascii'),
+                metadata={},
+                created=Time())
 
         def _eb(f):
             f.trap(eweb.Error)
@@ -365,3 +373,74 @@ class RemoteEntropyStore(Item):
 
         return getPageWithHeaders(self.getURI(objectId)
                     ).addCallbacks(_makeContentObject, _eb)
+
+
+
+class _PendingUpload(Item):
+    """
+    Marker for a pending upload to a backend store.
+    """
+    objectId = text(allowNone=False)
+    backend = reference(allowNone=False) # reftype=IBackendStore
+    scheduled = timestamp(
+        indexed=True, allowNone=False, defaultFactory=lambda: Time())
+
+    def run(self):
+        self.attemptUpload()
+
+
+    def attemptUpload(self):
+        """
+        Attempt an upload of an object to a backend store.
+
+        If the upload fails, it will be rescheduled; if it succeeds, this item
+        will be deleted.
+        """
+        def _uploadObject(obj):
+            return self.backend.storeObject(
+                obj.getContent(),
+                obj.contentType,
+                obj.metadata,
+                obj.created,
+                objectId=self.objectId)
+
+        def _reschedule(f):
+            # We do this instead of returning a Time from attemptUpload,
+            # because that can only be done synchronously.
+            log.err(f, 'Error uploading object %r to backend store %r' % (
+                self.objectId, self.backend))
+            self.scheduled += timedelta(minutes=2)
+            self.schedule()
+            return f
+
+        d = succeed(None)
+        d.addCallback(
+            lambda ign: IContentStore(self.store).getObject(self.objectId))
+        d.addCallback(_uploadObject)
+        d.addCallback(lambda ign: self.deleteFromStore())
+        d.addErrback(_reschedule)
+        return d
+
+
+    def schedule(self):
+        IScheduler(self.store).schedule(self, self.scheduled)
+
+
+
+class UploadScheduler(Item):
+    """
+    Schedule upload attempts for pending uploads.
+    """
+    implements(IUploadScheduler)
+    powerupInterfaces = [IUploadScheduler]
+
+    dummy = text()
+
+    # IUploadScheduler
+
+    def scheduleUpload(self, objectId, backend):
+        upload = _PendingUpload(
+            store=self.store,
+            objectId=objectId,
+            backend=backend)
+        upload.schedule()

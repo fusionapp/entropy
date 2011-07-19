@@ -68,3 +68,14 @@ class IBackendStore(IContentStore):
     """
     Backend content store.
     """
+
+
+
+class IUploadScheduler(Interface):
+    """
+    Manager of pending uploads.
+    """
+    def scheduleUpload(objectId, backend):
+        """
+        Notify the scheduler that an object needs to be uploaded to a backend.
+        """
