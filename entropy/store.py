@@ -35,6 +35,7 @@ from twisted.python import log
 from twisted.python.components import registerAdapter
 from twisted.internet.defer import succeed
 from twisted.application.service import Service, IService
+from twisted.internet.task import cooperate
 
 from nevow.inevow import IResource, IRequest
 from nevow.static import File
@@ -93,6 +94,7 @@ class ImmutableObject(Item):
     def getContent(self):
         return self.content.getContent()
 
+
 def objectResource(obj):
     """
     Adapt L{ImmutableObject) to L{IResource}.
@@ -121,6 +123,52 @@ class LocalStoreMigration(Item):
     start = integer(allowNone=False, doc="Starting storeID")
     current = integer(allowNone=False, doc="Most recent storeID migrated")
     end = integer(allowNone=False, doc="Ending storeID")
+
+    _task = inmemory()
+
+    def activate(self):
+        self._task = None
+
+
+    def _migrate(self):
+        """
+        Migrate a single object to the destination store.
+        """
+        store = self.source.store
+        obj = store.findFirst(
+            ImmutableObject,
+            ImmutableObject.storeID > self.current,
+            sort=ImmutableObject.storeID.asc)
+
+        if obj is None:
+            return None
+
+        def _cb(result):
+            self.current = obj.storeID
+
+        d = self.destination.storeObject(
+            content=obj.getContent(),
+            contentType=obj.contentType,
+            metadata=obj.metadata,
+            created=obj.created,
+            objectId=obj.objectId)
+        d.addCallback(_cb)
+        return d
+
+
+    # IMigration
+
+    def run(self):
+        """
+        Perform the migration.
+        """
+        if self._task is not None:
+            return
+
+        def _done(ign):
+            self._task = None
+        self._task = cooperate(iter(self._migrate, None))
+        self._task.whenDone().addCallback(_done)
 
 
 

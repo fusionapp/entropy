@@ -149,7 +149,33 @@ class ContentStoreTests(TestCase):
         self.assertIdentical(migration.destination, dest)
         self.assertEqual(migration.start, 0)
         self.assertEqual(migration.end, objs[-1].storeID)
-        self.assertEqual(migration.current, migration.start - 1)
+        self.assertEqual(migration.current, -1)
+
+
+    def test_migration(self):
+        """
+        Migration replicates all objects in this store to the destination.
+        """
+        def _mkObject(content):
+            return self.contentStore._storeObject(
+                content=content,
+                contentType=u'application/octet-stream')
+
+        obj1 = _mkObject(u'object1')
+        obj2 = _mkObject(u'object2')
+
+        dest = MockContentStore(store=self.store)
+        migration = self.contentStore.migrateTo(dest)
+        migration.run()
+
+        def _verify(ign):
+            self.assertEqual(
+                dest.events,
+                [('storeObject', dest, obj1.getContent(), obj1.contentType,
+                  obj1.metadata, obj1.created, obj1.objectId),
+                 ('storeObject', dest, obj2.getContent(), obj2.contentType,
+                  obj2.metadata, obj2.created, obj2.objectId)])
+        return migration._task.whenDone().addCallback(_verify)
 
 
 
@@ -180,9 +206,11 @@ class MockContentStore(Item):
         return fail(NonexistentObject(objectId))
 
 
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def storeObject(self, content, contentType, metadata={}, created=None,
+                    objectId=None):
         self.events.append(
-            ('storeObject', self, content, contentType, metadata, created))
+            ('storeObject', self, content, contentType, metadata, created,
+             objectId))
         return succeed(u'sha256:FAKE')
 
 
@@ -357,12 +385,6 @@ class _PendingUploadTests(TestCase):
         When an upload attempt is made, the object is stored to the backend
         store. If this succeeds, the L{_PendingUpload} item is deleted.
         """
-        storeObject = self.backendStore.storeObject
-        def _storeObject(content, contentType, metadata={}, created=None,
-                         objectId=None):
-            return storeObject(content, contentType, metadata, created)
-        object.__setattr__(self.backendStore, 'storeObject', _storeObject)
-
         def _cb(ign):
             self.assertEqual(
                 self.backendStore.events,
@@ -371,11 +393,11 @@ class _PendingUploadTests(TestCase):
                   'somecontent',
                   u'application/octet-stream',
                   {},
-                  self.testObject.created)])
+                  self.testObject.created,
+                  self.testObject.objectId)])
             self.assertRaises(ItemNotFound,
                               self.store.findUnique,
                               _PendingUpload)
-
         return self.pendingUpload.attemptUpload().addCallback(_cb)
 
 
