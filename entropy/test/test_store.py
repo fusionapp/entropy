@@ -27,7 +27,7 @@ from entropy.ientropy import (
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (
     ContentStore, ImmutableObject, ObjectCreator, MemoryObject, _PendingUpload,
-    MigrationManager)
+    MigrationManager, LocalStoreMigration)
 
 
 
@@ -129,19 +129,33 @@ class ContentStoreTests(TestCase):
             ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
 
 
+
+class MigrationTests(TestCase):
+    """
+    Tests for some migration-related stuff.
+    """
+    def setUp(self):
+        self.store = Store(self.mktemp())
+        self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+
+
+    def _mkObject(self):
+        """
+        Inject an object for testing.
+        """
+        return ImmutableObject(
+            store=self.store,
+            hash=u'somehash',
+            contentDigest=u'quux',
+            content=self.store.newFilePath('foo'),
+            contentType=u'application/octet-stream')
+
+
     def test_migrateTo(self):
         """
         A migration is initialized with the current range of stored objects.
         """
-        def _mkObject():
-            return ImmutableObject(
-                store=self.store,
-                hash=u'somehash',
-                contentDigest=u'quux',
-                content=self.store.newFilePath('foo'),
-                contentType=u'application/octet-stream')
-
-        objs = [_mkObject() for _ in xrange(5)]
+        objs = [self._mkObject() for _ in xrange(5)]
 
         dest = ContentStore(store=self.store, hash=u'sha256')
         migration = self.contentStore.migrateTo(dest)
@@ -166,7 +180,13 @@ class ContentStoreTests(TestCase):
 
         dest = MockContentStore(store=self.store)
         migration = self.contentStore.migrateTo(dest)
-        migration.run()
+        d = migration.run()
+
+        # Already running, so a new run should not be started
+        self.assertIdentical(migration.run(), None)
+
+        # This is created after the migration, so should not be migrated
+        obj3 = _mkObject(u'object2')
 
         def _verify(ign):
             self.assertEqual(
@@ -175,7 +195,29 @@ class ContentStoreTests(TestCase):
                   obj1.metadata, obj1.created, obj1.objectId),
                  ('storeObject', dest, obj2.getContent(), obj2.contentType,
                   obj2.metadata, obj2.created, obj2.objectId)])
-        return migration._task.whenDone().addCallback(_verify)
+        return d.addCallback(_verify)
+
+
+    def test_nextObject(self):
+        """
+        L{LocalStoreMigration._nextObject} obtains the next object after the
+        most recently processed object, and flags it for migration.
+        """
+        migration = LocalStoreMigration(
+            store=self.store,
+            start=0,
+            current=-1,
+            end=1000,
+            source=self.contentStore,
+            destination=self.contentStore)
+        obj1 = self._mkObject()
+        obj2 = self._mkObject()
+        m1 = migration._nextObject()
+        self.assertIdentical(m1.obj, obj1)
+        m2 = migration._nextObject()
+        self.assertIdentical(m2.obj, obj2)
+        m3 = migration._nextObject()
+        self.assertIdentical(m3, None)
 
 
 

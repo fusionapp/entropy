@@ -18,6 +18,7 @@ in a reliable fashion.
 """
 import hashlib
 from datetime import timedelta
+from itertools import chain
 
 from zope.interface import implements
 
@@ -33,7 +34,7 @@ from twisted.web import http, error as eweb
 from twisted.web.client import getPage
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.internet.defer import succeed
+from twisted.internet.defer import succeed, gatherResults
 from twisted.application.service import Service, IService
 from twisted.internet.task import cooperate
 
@@ -109,6 +110,53 @@ registerAdapter(objectResource, ImmutableObject, IResource)
 
 
 
+class PendingMigration(Item):
+    """
+    I track the state of the migration of an individual object.
+
+    Once a migration process decides to migrate a particular object, an
+    instance of this item will be created to track the migration of the object,
+    and will only be deleted once the object has been successfully migrated.
+    """
+    parent = reference(
+        allowNone=False,
+        doc="The migration to which this object belongs.")
+    obj = reference(
+        allowNone=False, reftype=ImmutableObject,
+        doc="The item whose migration I am tracking.")
+    lastFailure = text(
+        doc="A description of the last failed migration attempt, if any.")
+
+
+    def attemptMigration(self):
+        """
+        Perform one attempt at migration of the object being tracked.
+
+        If the migration is successful, this item will be deleted; otherwise,
+        the failure will be stored in the C{lastFailure} attribute.
+
+        @rtype: Deferred<None>
+        """
+        def _cb(ign):
+            self.deleteFromStore()
+
+        def _eb(f):
+            log.err(f, 'Error during migration of %r from %r to %r' % (
+                self.obj.objectId, self.parent.source, self.parent.destination))
+            self.lastFailure = unicode(
+                f.getTraceback(), 'ascii', errors='replace')
+
+        d = self.parent.destination.storeObject(
+            content=self.obj.getContent(),
+            contentType=self.obj.contentType,
+            metadata=self.obj.metadata,
+            created=self.obj.created,
+            objectId=self.obj.objectId)
+        d.addCallbacks(_cb, _eb)
+        return d
+
+
+
 class LocalStoreMigration(Item):
     """
     Migration from local content store.
@@ -124,36 +172,38 @@ class LocalStoreMigration(Item):
     current = integer(allowNone=False, doc="Most recent storeID migrated")
     end = integer(allowNone=False, doc="Ending storeID")
 
-    _task = inmemory()
+    concurrency = 4
+
+    _running = inmemory()
 
     def activate(self):
-        self._task = None
+        self._running = False
+
+
+    @transacted
+    def _nextObject(self):
+        """
+        Obtain the next object for which migration should be attempted.
+        """
+        obj = self.store.findFirst(
+            ImmutableObject,
+            AND(ImmutableObject.storeID > self.current,
+                ImmutableObject.storeID <= self.end),
+            sort=ImmutableObject.storeID.asc)
+        if obj is None:
+            return None
+        self.current = obj.storeID
+        return PendingMigration(store=self.store, parent=self, obj=obj)
 
 
     def _migrate(self):
         """
         Migrate a single object to the destination store.
         """
-        store = self.source.store
-        obj = store.findFirst(
-            ImmutableObject,
-            ImmutableObject.storeID > self.current,
-            sort=ImmutableObject.storeID.asc)
-
-        if obj is None:
+        m = self._nextObject()
+        if m is None:
             return None
-
-        def _cb(result):
-            self.current = obj.storeID
-
-        d = self.destination.storeObject(
-            content=obj.getContent(),
-            contentType=obj.contentType,
-            metadata=obj.metadata,
-            created=obj.created,
-            objectId=obj.objectId)
-        d.addCallback(_cb)
-        return d
+        return m.attemptMigration()
 
 
     # IMigration
@@ -162,13 +212,20 @@ class LocalStoreMigration(Item):
         """
         Perform the migration.
         """
-        if self._task is not None:
+        if self._running:
             return
+        self._running = True
 
         def _done(ign):
-            self._task = None
-        self._task = cooperate(iter(self._migrate, None))
-        self._task.whenDone().addCallback(_done)
+            self._running = False
+
+        it = (m.attemptMigration()
+              for m in chain(self.store.query(PendingMigration),
+                             iter(self._nextObject, None)))
+        tasks = [cooperate(it) for _ in xrange(self.concurrency)]
+        d = gatherResults([task.whenDone() for task in tasks])
+        d.addCallback(_done)
+        return d
 
 
 
