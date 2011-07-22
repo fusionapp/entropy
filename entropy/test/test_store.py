@@ -1,3 +1,8 @@
+"""
+@copyright: 2007-2011 Quotemaster cc. See LICENSE for details.
+
+Tests for L{entropy.store}.
+"""
 from StringIO import StringIO
 from datetime import timedelta
 
@@ -18,10 +23,11 @@ from nevow.testutil import FakeRequest
 from nevow.static import File
 
 from entropy.ientropy import (
-    IContentStore, ISiblingStore, IBackendStore, IUploadScheduler)
+    IContentStore, ISiblingStore, IBackendStore, IUploadScheduler, IMigration)
 from entropy.errors import CorruptObject, NonexistentObject
-from entropy.store import (ContentStore, ImmutableObject, ObjectCreator,
-    MemoryObject, _PendingUpload)
+from entropy.store import (
+    ContentStore, ImmutableObject, ObjectCreator, MemoryObject, _PendingUpload,
+    MigrationManager)
 
 
 
@@ -123,6 +129,29 @@ class ContentStoreTests(TestCase):
             ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
 
 
+    def test_migrateTo(self):
+        """
+        A migration is initialized with the current range of stored objects.
+        """
+        def _mkObject():
+            return ImmutableObject(
+                store=self.store,
+                hash=u'somehash',
+                contentDigest=u'quux',
+                content=self.store.newFilePath('foo'),
+                contentType=u'application/octet-stream')
+
+        objs = [_mkObject() for _ in xrange(5)]
+
+        dest = ContentStore(store=self.store, hash=u'sha256')
+        migration = self.contentStore.migrateTo(dest)
+        self.assertIdentical(migration.source, self.contentStore)
+        self.assertIdentical(migration.destination, dest)
+        self.assertEqual(migration.start, 0)
+        self.assertEqual(migration.end, objs[-1].storeID)
+        self.assertEqual(migration.current, migration.start - 1)
+
+
 
 class MockContentStore(Item):
     """
@@ -134,6 +163,7 @@ class MockContentStore(Item):
 
     dummy = integer()
     events = inmemory()
+    migrationDestination = inmemory()
 
     def __init__(self, events=None, **kw):
         super(MockContentStore, self).__init__(**kw)
@@ -154,6 +184,11 @@ class MockContentStore(Item):
         self.events.append(
             ('storeObject', self, content, contentType, metadata, created))
         return succeed(u'sha256:FAKE')
+
+
+    def migrateTo(self, destination):
+        self.migrationDestination = destination
+        return TestMigration()
 
 
 
@@ -484,3 +519,53 @@ class ImmutableObjectTests(TestCase):
         """
         self.testObject.content.setContent('garbage!')
         self.assertRaises(CorruptObject, IResource, self.testObject)
+
+
+
+class TestMigration(Item):
+    """
+    Test double implementing IMigration.
+    """
+    implements(IMigration)
+    powerupInterfaces = [IMigration]
+
+    ran = integer(default=0)
+
+    def run(self):
+        self.ran += 1
+
+
+
+class MigrationManagerTests(TestCase):
+    """
+    Tests for L{MigrationManager}.
+    """
+    def setUp(self):
+        self.store = Store()
+        self.manager = MigrationManager(store=self.store)
+
+
+    def test_serviceRunsMigrations(self):
+        """
+        Starting the service runs all existing migrations.
+        """
+        m1 = TestMigration(store=self.store)
+        m2 = TestMigration(store=self.store)
+        self.store.powerUp(m1)
+        self.store.powerUp(m2)
+        self.assertEqual(m1.ran, 0)
+        self.assertEqual(m2.ran, 0)
+        self.manager.startService()
+        self.assertEqual(m1.ran, 1)
+        self.assertEqual(m2.ran, 1)
+
+
+    def test_startMigration(self):
+        """
+        Starting a migration invokes the implementation on the source store.
+        """
+        source = MockContentStore()
+        destination = object()
+        result = self.manager.migrate(source, destination)
+        self.assertEqual(result.ran, 1)
+        self.assertEqual(source.migrationDestination, destination)

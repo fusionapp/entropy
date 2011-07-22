@@ -1,4 +1,6 @@
 """
+@copyright: 2007-2011 Quotemaster cc. See LICENSE for details.
+
 Object data store.
 
 This service acts as a cache / access point for a backend object store;
@@ -23,7 +25,8 @@ from epsilon.extime import Time
 
 from axiom.iaxiom import IScheduler
 from axiom.item import Item, transacted
-from axiom.attributes import text, path, timestamp, AND, inmemory, reference
+from axiom.attributes import (
+    text, path, timestamp, AND, inmemory, reference, integer)
 from axiom.dependency import dependsOn
 
 from twisted.web import http, error as eweb
@@ -31,13 +34,15 @@ from twisted.web.client import getPage
 from twisted.python import log
 from twisted.python.components import registerAdapter
 from twisted.internet.defer import succeed
+from twisted.application.service import Service, IService
 
 from nevow.inevow import IResource, IRequest
 from nevow.static import File
 from nevow.rend import NotFound
 
-from entropy.ientropy import (IContentStore, IContentObject, ISiblingStore,
-    IBackendStore, IUploadScheduler)
+from entropy.ientropy import (
+    IContentStore, IContentObject, ISiblingStore, IBackendStore,
+    IUploadScheduler, IMigrationManager, IMigration)
 from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
 from entropy.hash import getHash
 from entropy.util import deferred, getPageWithHeaders, MemoryObject
@@ -99,6 +104,23 @@ def objectResource(obj):
     return res
 
 registerAdapter(objectResource, ImmutableObject, IResource)
+
+
+
+class LocalStoreMigration(Item):
+    """
+    Migration from local content store.
+    """
+    implements(IMigration)
+    powerupInterfaces = [IMigration]
+
+    source = reference(
+        doc="The content store that is the source of this migration")
+    destination = reference(
+        doc="The content store that is the destination of this migration")
+    start = integer(allowNone=False, doc="Starting storeID")
+    current = integer(allowNone=False, doc="Most recent storeID migrated")
+    end = integer(allowNone=False, doc="Ending storeID")
 
 
 
@@ -214,6 +236,19 @@ class ContentStore(Item):
         if obj is None:
             raise NonexistentObject(objectId)
         return obj
+
+
+    @transacted
+    def migrateTo(self, destination):
+        latestObject = self.store.findFirst(
+            ImmutableObject, sort=ImmutableObject.storeID.desc)
+        return LocalStoreMigration(
+            store=self.store,
+            source=self,
+            destination=destination,
+            start=0,
+            current=-1,
+            end=latestObject.storeID)
 
 
 
@@ -444,3 +479,66 @@ class UploadScheduler(Item):
             objectId=objectId,
             backend=backend)
         upload.schedule()
+
+
+
+class MigrationManager(Item, Service):
+    """
+    Default migration manager implementation.
+    """
+    implements(IMigrationManager, IService)
+    powerupInterfaces = [IMigrationManager, IService]
+
+    dummy = integer()
+
+    # IService
+    parent = inmemory()
+    name = inmemory()
+    running = inmemory()
+
+    def activate(self):
+        self.parent = None
+        self.name = None
+        self.running = False
+
+
+    def installed(self):
+        """
+        Callback invoked after this item has been installed on a store.
+
+        This is used to set the service parent to the store's service object.
+        """
+        self.setServiceParent(self.store)
+
+
+    def deleted(self):
+        """
+        Callback invoked after a transaction in which this item has been
+        deleted is committed.
+
+        This is used to remove this item from its service parent, if it has
+        one.
+        """
+        if self.parent is not None:
+            self.disownServiceParent()
+
+
+    # IMigrationManager
+
+    def migrate(self, source, destination):
+        """
+        Initiate a migration between two content stores.
+
+        @see: L{entropy.ientropy.IMigrationManager.migrate}
+        """
+        migration = source.migrateTo(destination)
+        migration.run()
+        return migration
+
+
+    # IService
+
+    def startService(self):
+        self.running = True
+        for migration in self.store.powerupsFor(IMigration):
+            migration.run()
