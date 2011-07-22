@@ -1,4 +1,6 @@
 """
+@copyright: 2011 Quotemaster cc. See LICENSE for details.
+
 Backend implementation using Amazon S3 for storage.
 """
 from zope.interface import implements
