@@ -216,7 +216,7 @@ class MockContentStore(Item):
 
     def migrateTo(self, destination):
         self.migrationDestination = destination
-        return TestMigration()
+        return TestMigration(store=destination.store)
 
 
 
@@ -587,7 +587,8 @@ class MigrationManagerTests(TestCase):
         Starting a migration invokes the implementation on the source store.
         """
         source = MockContentStore()
-        destination = object()
+        destination = MockContentStore(store=self.store)
         result = self.manager.migrate(source, destination)
         self.assertEqual(result.ran, 1)
         self.assertEqual(source.migrationDestination, destination)
+        self.assertEqual(IMigration(self.store), result)

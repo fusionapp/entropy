@@ -580,6 +580,7 @@ class MigrationManager(Item, Service):
         @see: L{entropy.ientropy.IMigrationManager.migrate}
         """
         migration = source.migrateTo(destination)
+        self.store.powerUp(migration, IMigration)
         migration.run()
         return migration
 
