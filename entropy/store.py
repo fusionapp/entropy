@@ -198,16 +198,6 @@ class LocalStoreMigration(Item):
         return PendingMigration(store=self.store, parent=self, obj=obj)
 
 
-    def _migrate(self):
-        """
-        Migrate a single object to the destination store.
-        """
-        m = self._nextObject()
-        if m is None:
-            return None
-        return m.attemptMigration()
-
-
     # IMigration
 
     def run(self):
