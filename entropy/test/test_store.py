@@ -27,7 +27,7 @@ from entropy.ientropy import (
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (
     ContentStore, ImmutableObject, ObjectCreator, MemoryObject, _PendingUpload,
-    MigrationManager, LocalStoreMigration)
+    MigrationManager, LocalStoreMigration, PendingMigration)
 
 
 
@@ -137,6 +137,7 @@ class MigrationTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+        self.mockStore = MockContentStore(store=self.store)
 
 
     def _mkObject(self):
@@ -178,7 +179,7 @@ class MigrationTests(TestCase):
         obj1 = _mkObject(u'object1')
         obj2 = _mkObject(u'object2')
 
-        dest = MockContentStore(store=self.store)
+        dest = self.mockStore
         migration = self.contentStore.migrateTo(dest)
         d = migration.run()
 
@@ -218,6 +219,62 @@ class MigrationTests(TestCase):
         self.assertIdentical(m2.obj, obj2)
         m3 = migration._nextObject()
         self.assertIdentical(m3, None)
+
+
+    def _mkMigrationJunk(self):
+        """
+        Set up some test state for migrations.
+        """
+        obj = self.contentStore._storeObject(
+            content='foo',
+            contentType=u'application/octet-stream')
+        migration = LocalStoreMigration(
+            store=self.store,
+            start=0,
+            current=-1,
+            end=1000,
+            source=self.contentStore,
+            destination=self.mockStore)
+        pendingMigration = PendingMigration(
+            store=self.store,
+            parent=migration,
+            obj=obj)
+        return obj, migration, pendingMigration
+
+
+
+    def test_attemptMigrationSucceeds(self):
+        """
+        When a migration attempt succeeds, the tracking object is deleted.
+        """
+        obj, migration, pendingMigration = self._mkMigrationJunk()
+        def _cb(ign):
+            # .store is set to None on deletion
+            self.assertIdentical(pendingMigration.store, None)
+        return pendingMigration.attemptMigration().addCallback(_cb)
+
+
+    def test_attemptMigrationFails(self):
+        """
+        When a migration attempt fails, the tracking object is not deleted, and
+        the trackback is stored and logged.
+        """
+        obj, migration, pendingMigration = self._mkMigrationJunk()
+
+        def _explode(*a, **kw):
+            return fail(ValueError('42'))
+        object.__setattr__(self.mockStore, 'storeObject', _explode)
+
+        def _eb(f):
+            # .store is set to None on deletion
+            self.assertNotIdentical(pendingMigration.store, None)
+            tb = pendingMigration.lastFailure
+            [tb2] = self.flushLoggedErrors(ValueError)
+            self.assertIn(u'ValueError: 42', tb)
+            self.assertEqual(tb.encode('ascii'), tb2.getTraceback())
+
+        d = pendingMigration.attemptMigration()
+        return self.assertFailure(d, ValueError).addErrback(_eb)
 
 
 

@@ -165,8 +165,10 @@ class LocalStoreMigration(Item):
     powerupInterfaces = [IMigration]
 
     source = reference(
+        allowNone=False,
         doc="The content store that is the source of this migration")
     destination = reference(
+        allowNone=False,
         doc="The content store that is the destination of this migration")
     start = integer(allowNone=False, doc="Starting storeID")
     current = integer(allowNone=False, doc="Most recent storeID migrated")
