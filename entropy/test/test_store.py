@@ -187,7 +187,7 @@ class MigrationTests(TestCase):
         self.assertIdentical(migration.run(), None)
 
         # This is created after the migration, so should not be migrated
-        obj3 = _mkObject(u'object2')
+        _mkObject(u'object2')
 
         def _verify(ign):
             self.assertEqual(
