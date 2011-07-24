@@ -242,7 +242,6 @@ class MigrationTests(TestCase):
         return obj, migration, pendingMigration
 
 
-
     def test_attemptMigrationSucceeds(self):
         """
         When a migration attempt succeeds, the tracking object is deleted.
