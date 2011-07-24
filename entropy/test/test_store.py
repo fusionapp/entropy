@@ -12,11 +12,13 @@ from zope.interface import implements
 
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
+from twisted.application.service import IService
 
 from axiom.store import Store
 from axiom.item import Item
 from axiom.attributes import inmemory, integer
 from axiom.errors import ItemNotFound
+from axiom.dependency import installOn
 
 from nevow.inevow import IResource
 from nevow.testutil import FakeRequest
@@ -663,6 +665,18 @@ class MigrationManagerTests(TestCase):
     def setUp(self):
         self.store = Store()
         self.manager = MigrationManager(store=self.store)
+
+
+    def test_installService(self):
+        """
+        The service is started when it is installed into a running store, and
+        stopped when it is deleted.
+        """
+        IService(self.store).startService()
+        installOn(self.manager, self.store)
+        self.assertTrue(self.manager.running)
+        self.manager.deleteFromStore()
+        self.assertFalse(self.manager.running)
 
 
     def test_serviceRunsMigrations(self):
