@@ -112,7 +112,7 @@ registerAdapter(objectResource, ImmutableObject, IResource)
 
 class PendingMigration(Item):
     """
-    I track the state of the migration of an individual object.
+    An item that tracks the state the migration of an individual object.
 
     Once a migration process decides to migrate a particular object, an
     instance of this item will be created to track the migration of the object,
@@ -123,7 +123,7 @@ class PendingMigration(Item):
         doc="The migration to which this object belongs.")
     obj = reference(
         allowNone=False, reftype=ImmutableObject,
-        doc="The item whose migration I am tracking.")
+        doc="The object being migrated.")
     lastFailure = text(
         doc="A description of the last failed migration attempt, if any.")
 
