@@ -1,3 +1,8 @@
+"""
+@copyright: 2007-2011 Quotemaster cc. See LICENSE for details.
+
+Interface definitions for Entropy.
+"""
 from zope.interface import Interface, Attribute
 
 
@@ -12,7 +17,7 @@ class IContentObject(Interface):
     created = Attribute("""Creation timestamp of this object.""")
     metadata = Attribute("""Object metadata.""")
 
-    def getContent(self):
+    def getContent():
         """
         Get the data contained in this object.
 
@@ -45,6 +50,7 @@ class IContentStore(Interface):
         @rtype: C{Deferred<unicode>}
         """
 
+
     def getObject(objectID):
         """
         Retrieve an object.
@@ -53,6 +59,30 @@ class IContentStore(Interface):
         @type objectId: C{unicode}
         @returns: the content object.
         @rtype: C{Deferred<IContentObject>}
+        """
+
+
+    def migrateTo(destination):
+        """
+        Initiate a migration to another content store.
+
+        All objects present in this content store at the moment the migration
+        is initiated MUST be replicated to the destination store before the
+        migration is considered complete. Objects created after the migration
+        is initiated MUST NOT be replicated.
+
+        NOTE: This method is optional, as some storage backends may be unable
+        to support enumerating all objects which is usually necessary to
+        implement migration.
+
+        @type  destination: L{IContentStore}
+        @param destination: The destination store.
+
+        @rtype: L{IMigration}
+        @return: The migration powerup tracking the requested migration.
+
+        @raise NotImplementedError: if this implementation does not support
+            migration.
         """
 
 
@@ -78,4 +108,41 @@ class IUploadScheduler(Interface):
     def scheduleUpload(objectId, backend):
         """
         Notify the scheduler that an object needs to be uploaded to a backend.
+        """
+
+
+
+class IMigrationManager(Interface):
+    """
+    Manager for migrations from one content store to another.
+    """
+    def migrate(source, destination):
+        """
+        Initiate a migration between two content stores. Some content stores
+        may not support migration, as some storage backends cannot support
+        enumerating all stored objects.
+
+        @type  source: L{IContentStore}
+        @param source: The source content store; must support migration.
+
+        @type  destination: L{IContentStore}
+        @param destination: The destination store; does not need any special
+            support for migration.
+
+        @rtype: L{IMigration}
+        @return: The migration powerup responsible for tracking the requested
+            migration.
+        """
+
+
+
+class IMigration(Interface):
+    """
+    Powerup tracking a migration in progress.
+    """
+    def run():
+        """
+        Run this migration.
+
+        If the migration is already running, this is a noop.
         """

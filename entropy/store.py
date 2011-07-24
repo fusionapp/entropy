@@ -1,4 +1,6 @@
 """
+@copyright: 2007-2011 Quotemaster cc. See LICENSE for details.
+
 Object data store.
 
 This service acts as a cache / access point for a backend object store;
@@ -16,6 +18,7 @@ in a reliable fashion.
 """
 import hashlib
 from datetime import timedelta
+from itertools import chain
 
 from zope.interface import implements
 
@@ -23,21 +26,25 @@ from epsilon.extime import Time
 
 from axiom.iaxiom import IScheduler
 from axiom.item import Item, transacted
-from axiom.attributes import text, path, timestamp, AND, inmemory, reference
+from axiom.attributes import (
+    text, path, timestamp, AND, inmemory, reference, integer)
 from axiom.dependency import dependsOn
 
 from twisted.web import http, error as eweb
 from twisted.web.client import getPage
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.internet.defer import succeed
+from twisted.internet.defer import succeed, gatherResults
+from twisted.application.service import Service, IService
+from twisted.internet.task import cooperate
 
 from nevow.inevow import IResource, IRequest
 from nevow.static import File
 from nevow.rend import NotFound
 
-from entropy.ientropy import (IContentStore, IContentObject, ISiblingStore,
-    IBackendStore, IUploadScheduler)
+from entropy.ientropy import (
+    IContentStore, IContentObject, ISiblingStore, IBackendStore,
+    IUploadScheduler, IMigrationManager, IMigration)
 from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
 from entropy.hash import getHash
 from entropy.util import deferred, getPageWithHeaders, MemoryObject
@@ -88,6 +95,7 @@ class ImmutableObject(Item):
     def getContent(self):
         return self.content.getContent()
 
+
 def objectResource(obj):
     """
     Adapt L{ImmutableObject) to L{IResource}.
@@ -99,6 +107,117 @@ def objectResource(obj):
     return res
 
 registerAdapter(objectResource, ImmutableObject, IResource)
+
+
+
+class PendingMigration(Item):
+    """
+    An item that tracks the state the migration of an individual object.
+
+    Once a migration process decides to migrate a particular object, an
+    instance of this item will be created to track the migration of the object,
+    and will only be deleted once the object has been successfully migrated.
+    """
+    parent = reference(
+        allowNone=False,
+        doc="The migration to which this object belongs.")
+    obj = reference(
+        allowNone=False, reftype=ImmutableObject,
+        doc="The object being migrated.")
+    lastFailure = text(
+        doc="A description of the last failed migration attempt, if any.")
+
+
+    def attemptMigration(self):
+        """
+        Perform one attempt at migration of the object being tracked.
+
+        If the migration is successful, this item will be deleted; otherwise,
+        the failure will be stored in the C{lastFailure} attribute.
+
+        @rtype: Deferred<None>
+        """
+        def _cb(ign):
+            self.deleteFromStore()
+
+        def _eb(f):
+            log.err(f, 'Error during migration of %r from %r to %r' % (
+                self.obj.objectId, self.parent.source, self.parent.destination))
+            self.lastFailure = unicode(
+                f.getTraceback(), 'ascii', errors='replace')
+
+        d = self.parent.destination.storeObject(
+            content=self.obj.getContent(),
+            contentType=self.obj.contentType,
+            metadata=self.obj.metadata,
+            created=self.obj.created,
+            objectId=self.obj.objectId)
+        d.addCallbacks(_cb, _eb)
+        return d
+
+
+
+class LocalStoreMigration(Item):
+    """
+    Migration from local content store.
+    """
+    implements(IMigration)
+    powerupInterfaces = [IMigration]
+
+    source = reference(
+        allowNone=False,
+        doc="The content store that is the source of this migration")
+    destination = reference(
+        allowNone=False,
+        doc="The content store that is the destination of this migration")
+    start = integer(allowNone=False, doc="Starting storeID")
+    current = integer(allowNone=False, doc="Most recent storeID migrated")
+    end = integer(allowNone=False, doc="Ending storeID")
+
+    concurrency = 4
+
+    _running = inmemory()
+
+    def activate(self):
+        self._running = False
+
+
+    @transacted
+    def _nextObject(self):
+        """
+        Obtain the next object for which migration should be attempted.
+        """
+        obj = self.store.findFirst(
+            ImmutableObject,
+            AND(ImmutableObject.storeID > self.current,
+                ImmutableObject.storeID <= self.end),
+            sort=ImmutableObject.storeID.asc)
+        if obj is None:
+            return None
+        self.current = obj.storeID
+        return PendingMigration(store=self.store, parent=self, obj=obj)
+
+
+    # IMigration
+
+    def run(self):
+        """
+        Perform the migration.
+        """
+        if self._running:
+            return
+        self._running = True
+
+        def _done(ign):
+            self._running = False
+
+        it = (m.attemptMigration()
+              for m in chain(self.store.query(PendingMigration),
+                             iter(self._nextObject, None)))
+        tasks = [cooperate(it) for _ in xrange(self.concurrency)]
+        d = gatherResults([task.whenDone() for task in tasks])
+        d.addCallback(_done)
+        return d
 
 
 
@@ -214,6 +333,19 @@ class ContentStore(Item):
         if obj is None:
             raise NonexistentObject(objectId)
         return obj
+
+
+    @transacted
+    def migrateTo(self, destination):
+        latestObject = self.store.findFirst(
+            ImmutableObject, sort=ImmutableObject.storeID.desc)
+        return LocalStoreMigration(
+            store=self.store,
+            source=self,
+            destination=destination,
+            start=0,
+            current=-1,
+            end=latestObject.storeID)
 
 
 
@@ -444,3 +576,67 @@ class UploadScheduler(Item):
             objectId=objectId,
             backend=backend)
         upload.schedule()
+
+
+
+class MigrationManager(Item, Service):
+    """
+    Default migration manager implementation.
+    """
+    implements(IMigrationManager, IService)
+    powerupInterfaces = [IMigrationManager, IService]
+
+    dummy = integer()
+
+    # IService
+    parent = inmemory()
+    name = inmemory()
+    running = inmemory()
+
+    def activate(self):
+        self.parent = None
+        self.name = None
+        self.running = False
+
+
+    def installed(self):
+        """
+        Callback invoked after this item has been installed on a store.
+
+        This is used to set the service parent to the store's service object.
+        """
+        self.setServiceParent(self.store)
+
+
+    def deleted(self):
+        """
+        Callback invoked after a transaction in which this item has been
+        deleted is committed.
+
+        This is used to remove this item from its service parent, if it has
+        one.
+        """
+        if self.parent is not None:
+            self.disownServiceParent()
+
+
+    # IMigrationManager
+
+    def migrate(self, source, destination):
+        """
+        Initiate a migration between two content stores.
+
+        @see: L{entropy.ientropy.IMigrationManager.migrate}
+        """
+        migration = source.migrateTo(destination)
+        self.store.powerUp(migration, IMigration)
+        migration.run()
+        return migration
+
+
+    # IService
+
+    def startService(self):
+        self.running = True
+        for migration in self.store.powerupsFor(IMigration):
+            migration.run()
