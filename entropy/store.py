@@ -517,6 +517,14 @@ class _PendingUpload(Item):
     scheduled = timestamp(
         indexed=True, allowNone=False, defaultFactory=lambda: Time())
 
+
+    def _nextAttempt(self):
+        """
+        Determine the time to schedule the next attempt.
+        """
+        return Time() + timedelta(minutes=2)
+
+
     def run(self):
         self.attemptUpload()
 
@@ -541,7 +549,7 @@ class _PendingUpload(Item):
             # because that can only be done synchronously.
             log.err(f, 'Error uploading object %r to backend store %r' % (
                 self.objectId, self.backend))
-            self.scheduled += timedelta(minutes=2)
+            self.scheduled = self._nextAttempt()
             self.schedule()
             return f
 
@@ -549,8 +557,7 @@ class _PendingUpload(Item):
         d.addCallback(
             lambda ign: IContentStore(self.store).getObject(self.objectId))
         d.addCallback(_uploadObject)
-        d.addCallback(lambda ign: self.deleteFromStore())
-        d.addErrback(_reschedule)
+        d.addCallbacks(lambda ign: self.deleteFromStore(), _reschedule)
         return d
 
 
