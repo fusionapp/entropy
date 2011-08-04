@@ -512,13 +512,16 @@ class _PendingUploadTests(TestCase):
             raise ValueError('blah blah')
         object.__setattr__(self.backendStore, 'storeObject', _storeObject)
 
-        scheduled = self.pendingUpload.scheduled
+        nextScheduled = self.pendingUpload.scheduled + timedelta(minutes=5)
+        def _nextAttempt():
+            return nextScheduled
+        object.__setattr__(self.pendingUpload, '_nextAttempt', _nextAttempt)
 
         def _cb(ign):
             self.assertIdentical(self.store.findUnique(_PendingUpload),
                                  self.pendingUpload)
             self.assertEqual(self.pendingUpload.scheduled,
-                             scheduled + timedelta(minutes=2))
+                             nextScheduled)
             errors = self.flushLoggedErrors(ValueError)
             self.assertEqual(len(errors), 1)
 
