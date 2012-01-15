@@ -13,7 +13,9 @@ from zope.interface import implements
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
 from twisted.application.service import IService
+from twisted.internet.defer import inlineCallbacks
 
+from axiom.iaxiom import IScheduler
 from axiom.store import Store
 from axiom.item import Item
 from axiom.attributes import inmemory, integer
@@ -29,7 +31,7 @@ from entropy.ientropy import (
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (
     ContentStore, ImmutableObject, ObjectCreator, MemoryObject, _PendingUpload,
-    MigrationManager, LocalStoreMigration, PendingMigration)
+    MigrationManager, LocalStoreMigration, PendingMigration, UploadScheduler)
 
 
 
@@ -527,6 +529,235 @@ class _PendingUploadTests(TestCase):
 
         d = self.pendingUpload.attemptUpload()
         return self.assertFailure(d, ValueError).addCallback(_cb)
+
+
+
+class MockScheduler(object):
+    def __init__(self):
+        self.unscheduleAll()
+
+
+    def unscheduleAll(self):
+        self.scheduled = []
+
+
+    def schedule(self, runnable, time):
+        self.scheduled.append((runnable, time))
+
+
+
+class UploadSchedulerTests(TestCase):
+    """
+    Tests for L{entropy.store.UploadScheduler}.
+    """
+    def setUp(self):
+        self.scheduler = MockScheduler()
+        self.store = Store(self.mktemp())
+        self.store.inMemoryPowerUp(self.scheduler, IScheduler)
+        self.backendStore = MockContentStore(store=self.store)
+        self.contentStore = ContentStore(store=self.store)
+        self.store.inMemoryPowerUp(self.contentStore, IContentStore)
+
+
+    def makeUpload(self, **kw):
+        """
+        Make a L{_PendingUpload}.
+        """
+        return _PendingUpload(
+            store=self.store, backend=self.backendStore, **kw)
+
+
+    def getAllUploads(self, uploadScheduler):
+        """
+        Get all L{_PendingUpload}s.
+        """
+        return list(self.store.query(
+            _PendingUpload,
+            sort=_PendingUpload.scheduled.asc))
+
+
+    def test_nothingToReschedule(self):
+        """
+        When there are no pending uploads no attempt is made to reschedule
+        L{UploadScheduler}.
+        """
+        uploadScheduler = UploadScheduler(store=self.store)
+        uploadScheduler._reschedule()
+        self.assertEquals([], self.scheduler.scheduled)
+
+
+    def test_reschedule(self):
+        """
+        Reschedule L{UploadScheduler} to wake at the next scheduled upload
+        time.
+        """
+        now = Time()
+        self.scheduler.schedule(None, now)
+        self.assertEquals(
+            [(None, now)],
+            self.scheduler.scheduled)
+
+        uploadScheduler = UploadScheduler(store=self.store)
+        upload = self.makeUpload(objectId=u'1')
+        uploadScheduler._reschedule()
+        self.assertEquals(
+            [(uploadScheduler, upload.scheduled)],
+            self.scheduler.scheduled)
+
+
+    def test_getNextUpload(self):
+        """
+        L{UploadScheduler._getNextUpload} retrieves the next upload,
+        chronologically, regardless of whether it's in the future.
+        """
+        now = Time()
+        uploadScheduler = UploadScheduler(store=self.store)
+        upload1 = self.makeUpload(
+            objectId=u'1', scheduled=now + timedelta(minutes=1))
+        self.makeUpload(
+            objectId=u'2', scheduled=now + timedelta(days=1))
+        self.assertEquals(upload1, uploadScheduler._getNextUpload())
+
+
+    def test_getPendingUploads(self):
+        """
+        L{UploadScheduler._getPendingUploads} retrieves a C{list} of
+        L{_PendingUpload}s scheduled in the past.
+        """
+        then = Time()
+        future = Time() + timedelta(days=1)
+        uploadScheduler = UploadScheduler(store=self.store)
+        upload1 = self.makeUpload(objectId=u'1')
+        upload2 = self.makeUpload(objectId=u'2')
+        upload0 = self.makeUpload(objectId=u'3', scheduled=then)
+        self.makeUpload(objectId=u'3', scheduled=future)
+        self.assertEquals(
+            [upload0, upload1, upload2],
+            uploadScheduler._getPendingUploads())
+
+
+    def test_runEmpty(self):
+        """
+        If there are no L{_PendingUpload}s then nothing happens.
+        """
+        uploadScheduler = UploadScheduler(store=self.store)
+        uploadScheduler.run()
+        # Zero upload attempts.
+        self.assertEquals(0, len(self.backendStore.events))
+
+
+    @inlineCallbacks
+    def test_run(self):
+        """
+        All uploads are attempted, doing
+        L{UploadScheduler.maxConcurrentUploads} uploads at a time.
+        """
+        objects = [
+            ('1', u'foo'),
+            ('2', u'bar'),
+            ('3', u'baz')]
+        objectIds = {}
+        for content, contentType in objects:
+            objectId = yield self.contentStore.storeObject(
+                content, contentType)
+            objectIds[objectId] = (content, contentType)
+            self.makeUpload(objectId=objectId)
+
+        uploadScheduler = UploadScheduler(
+            store=self.store, maxConcurrentUploads=2)
+        uploadScheduler.run()
+
+        self.assertEquals(3, len(self.backendStore.events))
+        for event in self.backendStore.events:
+            content, contentType = objectIds[event[6]]
+            self.assertEquals('storeObject', event[0])
+            self.assertEquals(self.backendStore, event[1])
+            self.assertEquals(content, event[2])
+            self.assertEquals(contentType, event[3])
+
+        self.assertEquals(0, len(uploadScheduler._getPendingUploads()))
+
+
+    @inlineCallbacks
+    def test_runConcurrent(self):
+        """
+        Only L{UploadScheduler.maxConcurrentUploads} uploads are done at
+        a time.
+        """
+        objects = [
+            ('1', u'foo'),
+            ('2', u'bar'),
+            ('3', u'baz')]
+        objectIds = {}
+        for content, contentType in objects:
+            objectId = yield self.contentStore.storeObject(
+                content, contentType)
+            objectIds[objectId] = (content, contentType)
+            self.makeUpload(objectId=objectId)
+
+        uploadScheduler = UploadScheduler(
+            store=self.store, maxConcurrentUploads=2)
+        uploads = uploadScheduler._getPendingUploads()
+        self.assertEquals(3, len(uploads))
+        # Don't chain uploads to perform only `maxConcurrentUploads`.
+        uploadScheduler._doUploads(uploads, onlyOne=True)
+
+        self.assertEquals(
+            uploadScheduler.maxConcurrentUploads,
+            len(self.backendStore.events))
+        for event in self.backendStore.events:
+            content, contentType = objectIds[event[6]]
+            self.assertEquals('storeObject', event[0])
+            self.assertEquals(self.backendStore, event[1])
+            self.assertEquals(content, event[2])
+            self.assertEquals(contentType, event[3])
+
+        self.assertEquals(1, len(uploadScheduler._getPendingUploads()))
+
+
+    @inlineCallbacks
+    def test_runUploadFailure(self):
+        """
+        If an upload fails it is rescheduled for a later attempt.
+        """
+        def _brokenUploadObject(obj):
+            raise RuntimeError('Oops')
+
+        objectId = yield self.contentStore.storeObject(
+            'content', u'contentType')
+        self.makeUpload(objectId=objectId)
+
+        objectId2 = yield self.contentStore.storeObject(
+            'content2', u'contentType2')
+        failUpload = self.makeUpload(objectId=objectId2)
+        originalScheduled = failUpload.scheduled
+        object.__setattr__(
+            failUpload, '_uploadObject', _brokenUploadObject)
+
+        uploadScheduler = UploadScheduler(
+            store=self.store, maxConcurrentUploads=2)
+        uploads = uploadScheduler._getPendingUploads()
+        yield uploadScheduler._doUploads(uploads, reschedule=False)
+
+        # One attempt failed.
+        self.assertEquals(1, len(self.backendStore.events))
+        event = self.backendStore.events[0]
+        self.assertEquals('storeObject', event[0])
+        self.assertEquals(self.backendStore, event[1])
+        self.assertEquals('content', event[2])
+        self.assertEquals('contentType', event[3])
+        self.assertEquals(objectId, event[6])
+
+        errors = self.flushLoggedErrors(RuntimeError)
+        self.assertEquals(1, len(errors))
+        self.assertEquals('Oops', str(errors[0].value))
+
+        # The failed one is in the future, which _getPendingUploads doesn't
+        # care about.
+        self.assertEquals([], uploadScheduler._getPendingUploads())
+        # The one that failed is left.
+        self.assertEquals([failUpload], self.getAllUploads(UploadScheduler))
+        self.assertNotEquals(failUpload.scheduled, originalScheduled)
 
 
 

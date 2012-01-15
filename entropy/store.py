@@ -25,10 +25,11 @@ from zope.interface import implements
 from epsilon.extime import Time
 
 from axiom.iaxiom import IScheduler
-from axiom.item import Item, transacted
+from axiom.item import Item, transacted, declareLegacyItem
 from axiom.attributes import (
     text, path, timestamp, AND, inmemory, reference, integer)
 from axiom.dependency import dependsOn
+from axiom.upgrade import registerAttributeCopyingUpgrader
 
 from twisted.web import http, error as eweb
 from twisted.web.client import getPage
@@ -525,8 +526,16 @@ class _PendingUpload(Item):
         return Time() + timedelta(minutes=2)
 
 
-    def run(self):
-        self.attemptUpload()
+    def _uploadObject(self, obj):
+        """
+        Store C{obj} in L{backend}.
+        """
+        return self.backend.storeObject(
+            obj.getContent(),
+            obj.contentType,
+            obj.metadata,
+            obj.created,
+            objectId=self.objectId)
 
 
     def attemptUpload(self):
@@ -536,33 +545,18 @@ class _PendingUpload(Item):
         If the upload fails, it will be rescheduled; if it succeeds, this item
         will be deleted.
         """
-        def _uploadObject(obj):
-            return self.backend.storeObject(
-                obj.getContent(),
-                obj.contentType,
-                obj.metadata,
-                obj.created,
-                objectId=self.objectId)
-
         def _reschedule(f):
-            # We do this instead of returning a Time from attemptUpload,
-            # because that can only be done synchronously.
             log.err(f, 'Error uploading object %r to backend store %r' % (
                 self.objectId, self.backend))
             self.scheduled = self._nextAttempt()
-            self.schedule()
             return f
 
         d = succeed(None)
         d.addCallback(
             lambda ign: IContentStore(self.store).getObject(self.objectId))
-        d.addCallback(_uploadObject)
+        d.addCallback(self._uploadObject)
         d.addCallbacks(lambda ign: self.deleteFromStore(), _reschedule)
         return d
-
-
-    def schedule(self):
-        IScheduler(self.store).schedule(self, self.scheduled)
 
 
 
@@ -573,7 +567,74 @@ class UploadScheduler(Item):
     implements(IUploadScheduler)
     powerupInterfaces = [IUploadScheduler]
 
-    dummy = text()
+    schemaVersion = 2
+
+    scheduled = timestamp(allowNone=False, defaultFactory=lambda: Time())
+    maxConcurrentUploads = integer(allowNone=False, default=2)
+
+
+    def _getNextUpload(self):
+        """
+        Get the next L{_PendingUpload} Item, chronologically, regardless of its
+        scheduled time.
+        """
+        return self.store.findFirst(
+            _PendingUpload, sort=_PendingUpload.scheduled.asc)
+
+
+    def _getPendingUploads(self):
+        """
+        Get all L{_PendingUpload} Items scheduled in the past, sorted in
+        chronological.
+        """
+        return list(self.store.query(
+            _PendingUpload,
+            _PendingUpload.scheduled < Time(),
+            sort=_PendingUpload.scheduled.asc))
+
+
+    def _reschedule(self):
+        """
+        Wake L{UploadScheduler} up in time for the next upload attempt.
+        """
+        scheduler = IScheduler(self.store)
+        scheduler.unscheduleAll()
+        upload = self._getNextUpload()
+        if upload is not None:
+            scheduler.schedule(self, upload.scheduled)
+
+
+    def _doUploads(self, uploads, onlyOne=False, reschedule=True):
+        """
+        Process pending uploads concurrently.
+
+        @type  uploads: C{list} of L{_PendingUpload}
+        @param uploads: Uploads to process.
+
+        @type  onlyOne: C{bool}
+        @param onlyOne: Stop after one upload attempt per concurrency channel?
+            Defaults to C{False}.
+
+        @type  reschedule: C{bool}
+        @param reschedule: Reschedule L{UploadScheduler} after processing all
+            uploads? Defaults to C{True}.
+        """
+        def _doUpload(ignored=None):
+            if uploads:
+                upload = uploads.pop(0)
+                d = upload.attemptUpload()
+                if not onlyOne:
+                    d.addBoth(_doUpload)
+            elif reschedule:
+                self._reschedule()
+
+        for _ in range(self.maxConcurrentUploads):
+            _doUpload()
+
+
+    def run(self):
+        self._doUploads(self._getPendingUploads())
+
 
     # IUploadScheduler
 
@@ -582,7 +643,15 @@ class UploadScheduler(Item):
             store=self.store,
             objectId=objectId,
             backend=backend)
-        upload.schedule()
+        self._reschedule()
+
+declareLegacyItem(
+    typeName='entropy_store_uploadscheduler',
+    schemaVersion=1,
+    attributes=dict(
+        dummy=text()))
+
+registerAttributeCopyingUpgrader(UploadScheduler, 1, 2)
 
 
 
