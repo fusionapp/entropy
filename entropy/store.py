@@ -17,6 +17,7 @@ locally to ensure local view consistency, and then queued for backend storage
 in a reliable fashion.
 """
 import hashlib
+from base64 import b64encode
 from datetime import timedelta
 from itertools import chain
 
@@ -473,7 +474,7 @@ class RemoteEntropyStore(Item):
 
     # IContentStore
 
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def storeObject(self, data, contentType, metadata={}, created=None):
         digest = hashlib.md5(data).digest()
         return getPage((self.entropyURI + 'new').encode('ascii'),
                        method='PUT',
