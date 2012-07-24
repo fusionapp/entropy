@@ -476,7 +476,7 @@ class RemoteEntropyStore(Item):
 
     def storeObject(self, data, contentType, metadata={}, created=None):
         digest = hashlib.md5(data).digest()
-        return getPage((self.entropyURI + 'new').encode('ascii'),
+        return self._getPage((self.entropyURI + 'new').encode('ascii'),
                        method='PUT',
                        postdata=data,
                        headers={'Content-Length': len(data),
@@ -504,8 +504,16 @@ class RemoteEntropyStore(Item):
                 raise NonexistentObject(objectId)
             return f
 
-        return getPageWithHeaders(self.getURI(objectId)
+        return self._getPageWithHeaders(self.getURI(objectId)
                     ).addCallbacks(_makeContentObject, _eb)
+
+
+    def _getPage(self, *a, **kw):
+        return getPage(*a, **kw)
+
+
+    def _getPageWithHeaders(self, *a, **kw):
+        return getPageWithHeaders(*a, **kw)
 
 
 

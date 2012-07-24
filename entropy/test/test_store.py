@@ -13,6 +13,7 @@ from zope.interface import implements
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
 from twisted.application.service import IService
+from twisted.web.error import Error
 
 from axiom.store import Store
 from axiom.item import Item
@@ -29,7 +30,91 @@ from entropy.ientropy import (
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (
     ContentStore, ImmutableObject, ObjectCreator, MemoryObject, _PendingUpload,
-    MigrationManager, LocalStoreMigration, PendingMigration)
+    MigrationManager, LocalStoreMigration, PendingMigration, RemoteEntropyStore)
+
+
+
+class RemoteEntropyStoreTests(TestCase):
+    """
+    Tests for L{RemoteEntropyStore}.
+    """
+    def setUp(self):
+        self.uri = u'http://localhost:8080/'
+        self.remoteEntropyStore = RemoteEntropyStore(entropyURI=self.uri)
+
+
+    def test_getURI(self):
+        """
+        Returns the uri + documentId
+        """
+        documentId= u'1307990e6'
+
+        uri = self.remoteEntropyStore.getURI(documentId)
+        self.assertEquals(uri, self.uri + documentId)
+
+
+    def getPage(self, url, method, postdata, headers):
+        """
+        The parameters passed to getPage need to remain constant.
+        """
+        self.assertEqual(url, self.uri + 'new')
+        self.assertEqual(method, 'PUT')
+        self.assertEqual(postdata, 'blahblah some data blahblah')
+        return succeed(url)
+
+
+    def test_storeObject(self):
+        """
+        Calls getPage and retruns the url.
+        """
+        object.__setattr__(self.remoteEntropyStore, '_getPage',
+            self.getPage)
+
+        content = 'blahblah some data blahblah'
+        contentType = u'application/octet-stream'
+
+        d = self.remoteEntropyStore.storeObject(content, contentType)
+        def _cb(u):
+            self.u = u
+        d.addCallback(_cb)
+        self.assertEqual(self.u, self.uri + 'new')
+
+
+    def test_getObject(self):
+        """
+        Retrieving an object results in a L{Memory} object.
+        """
+        hash = 'sha256'
+        content = 'some data'
+        contentType = 'text/html; charset=ISO-8859-1'
+        contentDigest = u'1307990e6ba5ca145eb35e99182a9bec46531bc54ddf656a602c780fa0240dee'
+
+        objectId = '%s:%s' % (hash, contentDigest)
+        response_headers = {'content-type': [contentType]}
+        object.__setattr__(self.remoteEntropyStore, '_getPageWithHeaders',
+            lambda a: succeed((content, response_headers)))
+
+        def _s(memory):
+            self.assertEqual(memory.objectId, objectId)
+            self.assertEqual(memory.hash, 'sha256')
+            self.assertEqual(memory.contentDigest, contentDigest)
+            self.assertEqual(memory.contentType, contentType)
+            self.assertEqual(memory.content, content)
+
+        self.remoteEntropyStore.getObject(objectId).addCallback(_s)
+
+
+    def test_nonexistentObject(self):
+        """
+        Retrieving a nonexistent object results in L{NonexistentObject}.
+        """
+        object.__setattr__(self.remoteEntropyStore, '_getPageWithHeaders',
+            lambda a: fail(Error('404')))
+
+        objectId = u'sha256:NOSUCHOBJECT'
+        d = self.remoteEntropyStore.getObject(objectId)
+        return self.assertFailure(d, NonexistentObject
+            ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
 
 
 
