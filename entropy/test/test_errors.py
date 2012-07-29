@@ -11,7 +11,7 @@ class ExceptionTests(TestCase):
         Instantiating L{UnknownHashAlgorithm) correctly sets its attributes.
         """
         e = UnknownHashAlgorithm('algo')
-        self.assertEqual(e.algo, 'algo')
+        self.assertEquals(e.algo, 'algo')
 
 
 
@@ -27,7 +27,7 @@ class DigestMismatchTests(TestCase):
         """
         Verify the __str__ implementation.
         """
-        self.assertEqual(
+        self.assertEquals(
             "Expected digest 'foo' but got digest 'bar'",
             str(self.e))
 
@@ -36,6 +36,6 @@ class DigestMismatchTests(TestCase):
         """
         Verify the __repr__ implementation.
         """
-        self.assertEqual(
+        self.assertEquals(
             "<DigestMismatch expected='foo' actual='bar'>",
             repr(self.e))
