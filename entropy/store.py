@@ -17,6 +17,7 @@ locally to ensure local view consistency, and then queued for backend storage
 in a reliable fashion.
 """
 import hashlib
+from base64 import b64encode
 from datetime import timedelta
 from itertools import chain
 
@@ -474,11 +475,11 @@ class RemoteEntropyStore(Item):
     # IContentStore
 
     def storeObject(self, content, contentType, metadata={}, created=None):
-        digest = hashlib.md5(data).digest()
-        return getPage((self.entropyURI + 'new').encode('ascii'),
+        digest = hashlib.md5(content).digest()
+        return self._getPage((self.entropyURI + 'new').encode('ascii'),
                        method='PUT',
-                       postdata=data,
-                       headers={'Content-Length': len(data),
+                       postdata=content,
+                       headers={'Content-Length': len(content),
                                 'Content-Type': contentType,
                                 'Content-MD5': b64encode(digest)}
                     ).addCallback(lambda url: unicode(url, 'ascii'))
@@ -503,8 +504,22 @@ class RemoteEntropyStore(Item):
                 raise NonexistentObject(objectId)
             return f
 
-        return getPageWithHeaders(self.getURI(objectId)
+        return self._getPageWithHeaders(self.getURI(objectId)
                     ).addCallbacks(_makeContentObject, _eb)
+
+
+    def _getPage(self, *a, **kw):
+        """
+        Calls L{twisted.web.client.getPage}
+        """
+        return getPage(*a, **kw)
+
+
+    def _getPageWithHeaders(self, *a, **kw):
+        """
+        Calls L{entropy.util.getPageWithHeaders}
+        """
+        return getPageWithHeaders(*a, **kw)
 
 
 

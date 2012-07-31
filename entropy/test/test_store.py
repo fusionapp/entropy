@@ -13,6 +13,7 @@ from zope.interface import implements
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
 from twisted.application.service import IService
+from twisted.web.error import Error
 
 from axiom.store import Store
 from axiom.item import Item
@@ -29,7 +30,92 @@ from entropy.ientropy import (
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (
     ContentStore, ImmutableObject, ObjectCreator, MemoryObject, _PendingUpload,
-    MigrationManager, LocalStoreMigration, PendingMigration)
+    MigrationManager, LocalStoreMigration, PendingMigration, RemoteEntropyStore)
+
+
+
+class RemoteEntropyStoreTests(TestCase):
+    """
+    Tests for L{entropy.store.RemoteEntropyStore}.
+    """
+    def setUp(self):
+        self.uri = u'http://localhost:8080/'
+        self.remoteEntropyStore = RemoteEntropyStore(entropyURI=self.uri)
+
+
+    def test_getURI(self):
+        """
+        Returns the I{uri} + I{documentId}
+        """
+        documentId= u'1307990e6'
+
+        uri = self.remoteEntropyStore.getURI(documentId)
+        self.assertEquals(uri, self.uri + documentId)
+
+
+    def getPage(self, url, method, postdata, headers):
+        """
+        The parameters passed to C{getPage} need to remain constant.
+        """
+        self.assertEquals(url, self.uri + 'new')
+        self.assertEquals(method, 'PUT')
+        self.assertEquals(postdata, 'blahblah some data blahblah')
+        return succeed(url)
+
+
+    def test_storeObject(self):
+        """
+        Calls C{getPage} and returns the URL.
+        """
+        object.__setattr__(self.remoteEntropyStore, '_getPage',
+            self.getPage)
+
+        content = 'blahblah some data blahblah'
+        contentType = u'application/octet-stream'
+
+        d = self.remoteEntropyStore.storeObject(content, contentType)
+        d.addCallback(self.assertEquals, self.uri + 'new')
+        return d
+
+
+    def test_getObject(self):
+        """
+        Retrieving an object results in a L{MemoryObject}.
+        """
+        hash = 'sha256'
+        content = 'some data'
+        contentType = 'text/html; charset=ISO-8859-1'
+        contentDigest = u'1307990e6ba5ca145eb35e99182a9bec46531bc54ddf656a602c780fa0240dee'
+
+        objectId = '%s:%s' % (hash, contentDigest)
+        response_headers = {'content-type': [contentType]}
+        object.__setattr__(self.remoteEntropyStore, '_getPageWithHeaders',
+            lambda a: succeed((content, response_headers)))
+
+        def _checkObject(memory):
+            self.assertEquals(memory.objectId, objectId)
+            self.assertEquals(memory.hash, 'sha256')
+            self.assertEquals(memory.contentDigest, contentDigest)
+            self.assertEquals(memory.contentType, contentType)
+            self.assertEquals(memory.content, content)
+
+        d = self.remoteEntropyStore.getObject(objectId)
+        d.addCallback(_checkObject)
+        return d
+
+
+    def test_nonexistentObject(self):
+        """
+        Retrieving a nonexistent object results in L{NonexistentObject}.
+        """
+        object.__setattr__(self.remoteEntropyStore, '_getPageWithHeaders',
+            lambda a: fail(Error('404')))
+
+        objectId = u'sha256:NOSUCHOBJECT'
+        d = self.remoteEntropyStore.getObject(objectId)
+        d = self.assertFailure(d, NonexistentObject)
+        d.addCallback(lambda e: self.assertEquals(e.objectId, objectId))
+        return d
 
 
 
@@ -54,7 +140,7 @@ class ContentStoreTests(TestCase):
         def _cb(oid):
             self.oid = oid
         d.addCallback(_cb)
-        self.assertEqual(self.oid, u'sha256:' + expectedDigest)
+        self.assertEquals(self.oid, u'sha256:' + expectedDigest)
 
 
     def test_metadata(self):
@@ -95,8 +181,8 @@ class ContentStoreTests(TestCase):
                                               u'text/plain',
                                               created=t2)
         self.assertIdentical(obj, obj2)
-        self.assertEqual(obj.contentType, u'text/plain')
-        self.assertEqual(obj.created, t2)
+        self.assertEquals(obj.contentType, u'text/plain')
+        self.assertEquals(obj.created, t2)
 
         self.contentStore._storeObject('blah', u'text/plain')
 
@@ -115,10 +201,10 @@ class ContentStoreTests(TestCase):
                             created=created,
                             contentType=u'application/octet-stream')
         obj2 = self.contentStore.importObject(obj1)
-        self.assertEqual(obj1.objectId, obj2.objectId)
-        self.assertEqual(obj1.created, obj2.created)
-        self.assertEqual(obj1.contentType, obj2.contentType)
-        self.assertEqual(obj1.getContent(), obj2.getContent())
+        self.assertEquals(obj1.objectId, obj2.objectId)
+        self.assertEquals(obj1.created, obj2.created)
+        self.assertEquals(obj1.contentType, obj2.contentType)
+        self.assertEquals(obj1.getContent(), obj2.getContent())
 
 
     def test_nonexistentObject(self):
@@ -128,7 +214,7 @@ class ContentStoreTests(TestCase):
         objectId = u'sha256:NOSUCHOBJECT'
         d = self.contentStore.getObject(objectId)
         return self.assertFailure(d, NonexistentObject
-            ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
+            ).addCallback(lambda e: self.assertEquals(e.objectId, objectId))
 
 
 
@@ -164,9 +250,9 @@ class MigrationTests(TestCase):
         migration = self.contentStore.migrateTo(dest)
         self.assertIdentical(migration.source, self.contentStore)
         self.assertIdentical(migration.destination, dest)
-        self.assertEqual(migration.start, 0)
-        self.assertEqual(migration.end, objs[-1].storeID)
-        self.assertEqual(migration.current, -1)
+        self.assertEquals(migration.start, 0)
+        self.assertEquals(migration.end, objs[-1].storeID)
+        self.assertEquals(migration.current, -1)
 
 
     def test_migration(self):
@@ -192,7 +278,7 @@ class MigrationTests(TestCase):
         _mkObject(u'object2')
 
         def _verify(ign):
-            self.assertEqual(
+            self.assertEquals(
                 dest.events,
                 [('storeObject', dest, obj1.getContent(), obj1.contentType,
                   obj1.metadata, obj1.created, obj1.objectId),
@@ -272,7 +358,7 @@ class MigrationTests(TestCase):
             tb = pendingMigration.lastFailure
             [tb2] = self.flushLoggedErrors(ValueError)
             self.assertIn(u'ValueError: 42', tb)
-            self.assertEqual(tb.encode('ascii'), tb2.getTraceback())
+            self.assertEquals(tb.encode('ascii'), tb2.getTraceback())
 
         d = pendingMigration.attemptMigration()
         return self.assertFailure(d, ValueError).addErrback(_eb)
@@ -367,7 +453,7 @@ class StoreBackendTests(TestCase):
             self.o = o
         d.addCallback(_cb)
 
-        self.assertEqual(self.o.getContent(), 'somecontent')
+        self.assertEquals(self.o.getContent(), 'somecontent')
         d = self.contentStore2.getObject(self.testObject.objectId)
         def _cb2(o2):
             self.o2 = o2
@@ -408,7 +494,7 @@ class StoreBackendTests(TestCase):
         self.store.powerUp(backendStore, IBackendStore)
 
         def _cb(e):
-            self.assertEqual(
+            self.assertEquals(
                 events,
                 [('getObject', siblingStore, u'sha256:aoeuaoeu'),
                  ('getObject', backendStore, u'sha256:aoeuaoeu')])
@@ -426,7 +512,7 @@ class StoreBackendTests(TestCase):
         objectId = u'sha256:NOSUCHOBJECT'
         d = self.contentStore2.getSiblingObject(objectId)
         return self.assertFailure(d, NonexistentObject
-            ).addCallback(lambda e: self.assertEqual(e.objectId, objectId))
+            ).addCallback(lambda e: self.assertEquals(e.objectId, objectId))
 
 
     def test_storeObject(self):
@@ -446,9 +532,9 @@ class StoreBackendTests(TestCase):
                                  contentType=u'application/octet-stream')
         testObject = self.store.findUnique(ImmutableObject)
         pu = scheduler.uploads
-        self.assertEqual(len(pu), 2)
-        self.assertEqual(pu[0][0], testObject.objectId)
-        self.assertEqual(pu[1][0], testObject.objectId)
+        self.assertEquals(len(pu), 2)
+        self.assertEquals(pu[0][0], testObject.objectId)
+        self.assertEquals(pu[1][0], testObject.objectId)
         for objectId, backend in pu:
             if backend is backendStore:
                 break
@@ -486,7 +572,7 @@ class _PendingUploadTests(TestCase):
         store. If this succeeds, the L{_PendingUpload} item is deleted.
         """
         def _cb(ign):
-            self.assertEqual(
+            self.assertEquals(
                 self.backendStore.events,
                 [('storeObject',
                   self.backendStore,
@@ -520,10 +606,10 @@ class _PendingUploadTests(TestCase):
         def _cb(ign):
             self.assertIdentical(self.store.findUnique(_PendingUpload),
                                  self.pendingUpload)
-            self.assertEqual(self.pendingUpload.scheduled,
+            self.assertEquals(self.pendingUpload.scheduled,
                              nextScheduled)
             errors = self.flushLoggedErrors(ValueError)
-            self.assertEqual(len(errors), 1)
+            self.assertEquals(len(errors), 1)
 
         d = self.pendingUpload.attemptUpload()
         return self.assertFailure(d, ValueError).addCallback(_cb)
@@ -589,7 +675,7 @@ class ImmutableObjectTests(TestCase):
         Metadata is not yet supported, so L{ImmutableObject.metadata} should be
         an empty dict.
         """
-        self.assertEqual(self.testObject.metadata, {})
+        self.assertEquals(self.testObject.metadata, {})
 
 
     def test_verify(self):
@@ -612,7 +698,7 @@ class ImmutableObjectTests(TestCase):
         """
         L{ImmutableObject.getContent} returns the contents of the object.
         """
-        self.assertEqual(self.testObject.getContent(), 'somecontent')
+        self.assertEquals(self.testObject.getContent(), 'somecontent')
 
 
     def test_objectId(self):
@@ -620,7 +706,7 @@ class ImmutableObjectTests(TestCase):
         The object ID is composed of the digest function and content digest,
         separated by a colon.
         """
-        self.assertEqual(
+        self.assertEquals(
             self.testObject.objectId,
             'sha256:d5a3477d91583e65a7aba6f6db7a53e2de739bc7bf8f4a08f0df0457b637f1fb')
 
@@ -632,9 +718,9 @@ class ImmutableObjectTests(TestCase):
         """
         res = IResource(self.testObject)
         self.assertIsInstance(res, File)
-        self.assertEqual(res.fp, self.testObject.content)
-        self.assertEqual(res.type, 'application/octet-stream')
-        self.assertEqual(res.encoding, None)
+        self.assertEquals(res.fp, self.testObject.content)
+        self.assertEquals(res.type, 'application/octet-stream')
+        self.assertEquals(res.encoding, None)
 
 
     def test_adaptDamagedObject(self):
@@ -690,11 +776,11 @@ class MigrationManagerTests(TestCase):
         m2 = TestMigration(store=self.store)
         self.store.powerUp(m1)
         self.store.powerUp(m2)
-        self.assertEqual(m1.ran, 0)
-        self.assertEqual(m2.ran, 0)
+        self.assertEquals(m1.ran, 0)
+        self.assertEquals(m2.ran, 0)
         self.manager.startService()
-        self.assertEqual(m1.ran, 1)
-        self.assertEqual(m2.ran, 1)
+        self.assertEquals(m1.ran, 1)
+        self.assertEquals(m2.ran, 1)
 
 
     def test_startMigration(self):
@@ -704,6 +790,6 @@ class MigrationManagerTests(TestCase):
         source = MockContentStore()
         destination = MockContentStore(store=self.store)
         result = self.manager.migrate(source, destination)
-        self.assertEqual(result.ran, 1)
-        self.assertEqual(source.migrationDestination, destination)
-        self.assertEqual(IMigration(self.store), result)
+        self.assertEquals(result.ran, 1)
+        self.assertEquals(source.migrationDestination, destination)
+        self.assertEquals(IMigration(self.store), result)
