@@ -65,7 +65,7 @@ class RemoteEntropyStoreTests(TestCase):
 
     def test_storeObject(self):
         """
-        Calls C{getPage} and retruns the URL.
+        Calls C{getPage} and returns the URL.
         """
         object.__setattr__(self.remoteEntropyStore, '_getPage',
             self.getPage)
@@ -113,8 +113,8 @@ class RemoteEntropyStoreTests(TestCase):
 
         objectId = u'sha256:NOSUCHOBJECT'
         d = self.remoteEntropyStore.getObject(objectId)
-        f = self.assertFailure(d, NonexistentObject)
-        f.addCallback(lambda e: self.assertEquals(e.objectId, objectId))
+        d = self.assertFailure(d, NonexistentObject)
+        d.addCallback(lambda e: self.assertEquals(e.objectId, objectId))
         return d
 
 
