@@ -27,7 +27,7 @@ class ShannonCreator(object):
     """
     implements(IResource)
 
-    def __init__(self, entropyURI=u'http://localhost:8090/'):
+    def __init__(self, entropyURI=u'http://localhost:8080/'):
         self.entropyURI = entropyURI
 
 
@@ -129,7 +129,7 @@ class CoreResource(Item):
             if not metadata['X-Entropy-Name']:
                 raise ValueError('X-Entropy-Name is manditory')
 
-            d = RemoteEntropyStore(entropyURI=u'http://localhost:8090/'
+            d = RemoteEntropyStore(entropyURI=u'http://localhost:8080/'
                 ).storeObject(data, contentType) # Hardcoded URI :S
             d.addCallback(_cb)
             d.addCallback(lambda a: 'Updated!')
