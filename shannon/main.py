@@ -16,7 +16,7 @@ from entropy.errors import NonexistentObject, DigestMismatch
 from entropy.store import RemoteEntropyStore
 
 from shannon.cassandra import CassandraIndex
-from shannon.util import metadataFromHeaders
+from shannon.util import metadataFromHeaders, parseTags
 
 
 class ShannonCreator(object):
@@ -33,7 +33,6 @@ class ShannonCreator(object):
 
     # IResource
     def renderHTTP(self, ctx):
-        print repr(ctx)
         req = IRequest(ctx)
         if req.method == 'GET':
             req.setHeader('Content-Type', 'text/plain')
@@ -58,16 +57,25 @@ class ShannonCreator(object):
             if expectedHash != actualHash:
                 raise DigestMismatch(expectedHash, actualHash)
 
+        # Checks for required headers.
         if not metadata['X-Entropy-Name']:
             raise ValueError('X-Entropy-Name is manditory')
+        if not metadata['X-Shannon-Description']:
+            raise ValueError('X-Shannon-Description is manditory')
 
         def _cb(objectId):
             objectId = objectId.encode('ascii')
             return objectId
 
-        d = RemoteEntropyStore(entropyURI=self.entropyURI).storeObject(data, contentType)
+        d = RemoteEntropyStore(entropyURI=self.entropyURI).storeObject(
+            data, contentType)
         d.addCallback(_cb)
-        d.addCallback(CassandraIndex().insert, metadata)
+
+        tags = parseTags(metadata['X-Shannon-Tags'])
+        d.addCallback(CassandraIndex().insert,
+            metadata['X-Entropy-Name'],
+            metadata['X-Shannon-Description'],
+            tags)
         return d
 
 
@@ -143,7 +151,6 @@ class CoreResource(Item):
         """
         Nothing to see here.
         """
-        print repr(ctx)
         req = IRequest(ctx)
         if req.method == 'GET':
             req.setHeader('Content-Type', 'text/plain')
@@ -194,15 +201,18 @@ def shannonClient():
     """
     data = 'toehueoutheee'
     digest = hashlib.md5(data).digest()
-    return getPage('http://127.0.0.1:9000/new',
-                   method='POST',
+    def _cb(d):
+        reactor.stop()
+
+    return getPage('http://127.0.0.1:9000/88d2698a-f131-11e1-98f2-0800278d227d',
+                   method='GET',
                    postdata=data,
                    headers={'Content-Length': len(data),
                             'Content-MD5': b64encode(digest),
                             'X-Shannon-Description': 'This is a new description! :D.',
                             'X-Entropy-Name': 'The name of the Entropy object!!.',
                             'X-Shannon-Tags': 'tag1=value, tag2=value, tag4=value, tag3=value'}
-                ).addCallback(lambda url: unicode(url, 'ascii'))
+                ).addCallback(_cb)
 
 
 if __name__ == '__main__':
