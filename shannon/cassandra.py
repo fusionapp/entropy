@@ -95,7 +95,7 @@ class CassandraIndex(object):
         # Check shannon entity exists before attempting update it.
         d = self.retrieve(shannonID)
         # Get the shannonID
-        d.addCallback(lambda get: get[0][0])
+        d.addCallback(lambda get: get[0]['shannon'][0])
 
         if entropyID:
             d.addCallback(self._insertAttachment, entropyName, entropyID)

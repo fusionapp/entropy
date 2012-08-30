@@ -50,6 +50,7 @@ class CassandraIndexTests(TestCase):
 
     def test_retrieve(self):
         def _cb(d):
-            self.assertEqual('88d2698a-f131-11e1-98f2-0800278d227d', str(d[0][0]))
+            self.assertEqual('88d2698a-f131-11e1-98f2-0800278d227d',
+                str(d[0]['shannon'][0]))
         d = self.index.retrieve('shannonId')
         d.addCallback(_cb)
