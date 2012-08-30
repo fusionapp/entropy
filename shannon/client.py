@@ -39,14 +39,14 @@ class Client(object):
 
         @return: Deferred containing the shannonID or a Failure.
         """
-        digest = hashlib.md5(data).digest()
+        digest = hashlib.md5(entropyData).digest()
         if tags:
             tags = tagsToStr(tags)
 
         return getPage((self.shannonURI + 'new').encode('ascii'),
                        method='POST',
-                       postdata=data,
-                       headers={'Content-Length': len(data),
+                       postdata=entropyData,
+                       headers={'Content-Length': len(entropyData),
                                 'Content-Type': self.contentType,
                                 'Content-MD5': b64encode(digest),
                                 'X-Entropy-Name': entropyName,
