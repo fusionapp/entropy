@@ -81,6 +81,19 @@ class CassandraIndex(object):
 
 
     def insert(self, entropyID, entropyName, shannonDescription, tags=None):
+        """
+        @param entropyID: The ID of the entropy object to insert.
+        @type entropyID: C{str}.
+
+        @param entropyName: The name of the entropy object.
+        @type entropyName: C{str}.
+
+        @param shannonDescription: The description of the shannon object.
+        @type shannonDescription: C{str}.
+
+        @param tags: Optional. A dictionary of key-value tags for the shannon object.
+        @type: C{dict}.
+        """
         shannonID = str(uuid1())
 
         d = self._insertShannon(shannonID, shannonDescription)
@@ -92,6 +105,23 @@ class CassandraIndex(object):
 
 
     def update(self, shannonID, shannonDescription=None, entropyID=None, entropyName=None, tags=None):
+        """
+        @param shannonID: The shannonID of the shannon object.
+        @type shannonID: C{str}.
+
+        @param entropyID: Optional. The ID of the entropy object to insert.
+        @type entropyID: C{str}.
+
+        @param entropyName: Optional only if no entropyID is provided.
+            The name of the entropy object.
+        @type entropyName: C{str}.
+
+        @param shannonDescription: Optional. The description of the shannon object.
+        @type shannonDescription: C{str}.
+
+        @param tags: Optional. A dictionary of key-value tags for the shannon object.
+        @type: C{dict}.
+        """
         # Check shannon entity exists before attempting update it.
         d = self.retrieve(shannonID)
         # Get the shannonID
