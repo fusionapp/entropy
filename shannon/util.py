@@ -25,7 +25,20 @@ def metadataFromHeaders(req):
     return dict(zip(headers, headerData))
 
 
-def parseTags(tags):
+def tagsToStr(tags):
+    """
+    @param tags: A dictionary of tags to convert a string.
+    @type tags: C{dict}.
+
+    @return: String formatted tags.
+    @rtype: C{str}
+    """
+    if not tags:
+        return ''
+    return ', '.join(['%s=%s' % (key, value) for key, value in tags.iteritems()])
+
+
+def tagsToDict(tags):
     """
     @type tags: C{string}
     @param tags: The tags to parse.
@@ -33,4 +46,6 @@ def parseTags(tags):
     @return: A dictionary of tags.
     @rtype: C{dict}
     """
+    if not tags:
+        return None
     return dict(item.split('=', 1) for item in tags.split(', '))

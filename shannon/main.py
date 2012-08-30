@@ -1,5 +1,3 @@
-from base64 import b64encode
-
 import hashlib
 
 from zope.interface import implements
@@ -8,7 +6,6 @@ from axiom.item import Item
 from axiom.attributes import text, inmemory
 
 from twisted.web import http
-from twisted.web.client import getPage
 from nevow.inevow import IResource, IRequest
 from nevow.rend import NotFound
 
@@ -16,7 +13,7 @@ from entropy.errors import NonexistentObject, DigestMismatch
 from entropy.store import RemoteEntropyStore
 
 from shannon.cassandra import CassandraIndex
-from shannon.util import metadataFromHeaders, parseTags
+from shannon.util import metadataFromHeaders, tagsToDict
 
 
 class ShannonCreator(object):
@@ -71,7 +68,7 @@ class ShannonCreator(object):
             data, contentType)
         d.addCallback(_cb)
 
-        tags = parseTags(metadata['X-Shannon-Tags'])
+        tags = tagsToDict(metadata['X-Shannon-Tags'])
         d.addCallback(CassandraIndex().insert,
             metadata['X-Entropy-Name'],
             metadata['X-Shannon-Description'],
@@ -88,16 +85,14 @@ class CoreResource(Item):
     powerupInterfaces = [IResource]
 
     addSlash = inmemory()
-    uuid = inmemory()
-
     hash = text(allowNone=False, default=u'sha256')
 
-    def getObject(self, uuid):
+    def getObject(self, shannonID):
         """
         Retrieves a Shannon object.
 
-        @type uuid: C{unicode}
-        @param uuid: The uuid of the Shannon object.
+        @type shannonID: C{unicode}
+        @param shannonID: The shannonID of the Shannon object.
 
         @return: A Deferred which will fire the return value of
             CassandraIndex.retrieve(name) if the object is found.
@@ -106,10 +101,15 @@ class CoreResource(Item):
         def _notFound(f):
             f.trap(NonexistentObject)
             return 'Object not found.'
-        return cassandra.retrieve(uuid).addErrback(_notFound)
+
+        def _cb(d):
+            return repr(d)
+        d = cassandra.retrieve(shannonID).addErrback(_notFound)
+        d.addCallback(_cb)
+        return d
 
 
-    def handlePOST(self, req):
+    def handlePOST(self, req, shannonID):
         """
         Updates a Shannon object.
 
@@ -120,9 +120,14 @@ class CoreResource(Item):
         data = req.content.read()
         metadata = metadataFromHeaders(req)
 
-        def _cb(entropyId):
-            entropyId = entropyId.encode('ascii')
-            return CassandraIndex().update(self.uuid, metadata, entropyId=entropyId)
+        def _cb(entropyID):
+            entropyID = entropyID.encode('ascii')
+            tags = tagsToDict(metadata['X-Shannon-Tags'])
+            return CassandraIndex().update(shannonID,
+                shannonDescription=metadata['X-Shannon-Description'],
+                entropyID=entropyID,
+                entropyName=metadata['X-Entropy-Name'],
+                tags=tags)
 
         if data:
             contentType = req.getHeader('Content-Type') or 'application/octet-stream'
@@ -138,12 +143,12 @@ class CoreResource(Item):
                 raise ValueError('X-Entropy-Name is manditory')
 
             d = RemoteEntropyStore(entropyURI=u'http://localhost:8080/'
-                ).storeObject(data, contentType) # Hardcoded URI :S
+                ).storeObject(data, contentType)
             d.addCallback(_cb)
             d.addCallback(lambda a: 'Updated!')
             return d
         else:
-            return CassandraIndex().update(self.uuid, metadata)
+            return CassandraIndex().update(shannonID, metadata)
 
 
     # IResource
@@ -152,11 +157,13 @@ class CoreResource(Item):
         Nothing to see here.
         """
         req = IRequest(ctx)
+        shannonID = req.path[1:]
+
         if req.method == 'GET':
             req.setHeader('Content-Type', 'text/plain')
-            return self.getObject(self.uuid)
+            return self.getObject(shannonID)
         elif req.method == 'POST':
-            return self.handlePOST(req)
+            return self.handlePOST(req, shannonID)
         else:
             req.setResponseCode(http.NOT_ALLOWED)
             req.setHeader('Content-Type', 'text/plain')
@@ -178,7 +185,6 @@ class CoreResource(Item):
         if name == 'new':
             return ShannonCreator()
         else:
-            self.uuid = unicode(name, 'ascii')
             return self
         return None
 
@@ -192,30 +198,3 @@ class CoreResource(Item):
             if res is not None:
                 return res, segments[1:]
         return NotFound
-
-
-
-def shannonClient():
-    """
-    Temporary.
-    """
-    data = 'toehueoutheee'
-    digest = hashlib.md5(data).digest()
-    def _cb(d):
-        reactor.stop()
-
-    return getPage('http://127.0.0.1:9000/88d2698a-f131-11e1-98f2-0800278d227d',
-                   method='GET',
-                   postdata=data,
-                   headers={'Content-Length': len(data),
-                            'Content-MD5': b64encode(digest),
-                            'X-Shannon-Description': 'This is a new description! :D.',
-                            'X-Entropy-Name': 'The name of the Entropy object!!.',
-                            'X-Shannon-Tags': 'tag1=value, tag2=value, tag4=value, tag3=value'}
-                ).addCallback(_cb)
-
-
-if __name__ == '__main__':
-    from twisted.internet import reactor
-    d = shannonClient()
-    reactor.run()

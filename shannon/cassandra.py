@@ -8,8 +8,6 @@ from twisted.enterprise.adbapi import ConnectionPool
 
 from entropy.errors import NonexistentObject
 
-from shannon.util import parseTags
-
 
 
 class CassandraIndex(object):
@@ -96,6 +94,9 @@ class CassandraIndex(object):
     def update(self, shannonID, shannonDescription=None, entropyID=None, entropyName=None, tags=None):
         # Check shannon entity exists before attempting update it.
         d = self.retrieve(shannonID)
+        # Get the shannonID
+        d.addCallback(lambda get: get[0][0])
+
         if entropyID:
             d.addCallback(self._insertAttachment, entropyName, entropyID)
 
