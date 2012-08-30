@@ -1,4 +1,6 @@
 from xmantissa.offering import InstalledOffering
+from json import JSONEncoder
+from uuid import UUID
 
 
 def getAppStore(siteStore):
@@ -49,3 +51,10 @@ def tagsToDict(tags):
     if not tags:
         return None
     return dict(item.split('=', 1) for item in tags.split(', '))
+
+
+
+class retrieveEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, UUID):
+            return str(obj)

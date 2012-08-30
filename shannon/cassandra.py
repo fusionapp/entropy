@@ -108,19 +108,47 @@ class CassandraIndex(object):
         return d
 
 
-    def retrieve(self, shannonID):
-        """
-        Not fully implemented.
-        Only returns the shannon column family data.
-        """
+    def _retrieveShannon(self, shannonID):
         d = self.pool.runQuery('''
             SELECT * FROM shannon WHERE shannonID = :shannonID''',
             dict(shannonID=str(shannonID)))
+        d.addCallback(lambda res: {'shannon':res[0]})
+        return d
 
-        def _cb(results):
-            if not results:
+
+    def _retrieveAttachments(self, shannonID):
+        d = self.pool.runQuery('''
+            SELECT * FROM attachments WHERE shannonID = :shannonID''',
+            dict(shannonID=shannonID))
+        d.addCallback(lambda res: {'attachments':res})
+        return d
+
+    
+    def _retrieveTags(self, shannonID):
+        d = self.pool.runQuery('''
+            SELECT * FROM tags WHERE shannonID = :shannonID''',
+            dict(shannonID=shannonID))
+        d.addCallback(lambda res: {'tags':res})
+        return d
+
+
+    def retrieve(self, shannonID):
+        """
+        @param shannonID: The shannonID of the object to retrieve.
+        @type shannonID: C{str}.
+
+        @return: A list containing attachments, tags and the shannon entity data.
+        """
+        def _checkResult(result):
+            if not result:
                 raise NonexistentObject(shannonID)
-            return results
+            return result
 
-        d.addCallback(_cb)
+        ds = [
+            self._retrieveShannon(shannonID),
+            self._retrieveAttachments(shannonID),
+            self._retrieveTags(shannonID)]
+
+        d = gatherResults(ds)
+        d.addCallback(_checkResult)
         return d

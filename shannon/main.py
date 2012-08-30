@@ -1,4 +1,5 @@
 import hashlib
+import json
 
 from zope.interface import implements
 
@@ -13,7 +14,7 @@ from entropy.errors import NonexistentObject, DigestMismatch
 from entropy.store import RemoteEntropyStore
 
 from shannon.cassandra import CassandraIndex
-from shannon.util import metadataFromHeaders, tagsToDict
+from shannon.util import metadataFromHeaders, tagsToDict, retrieveEncoder
 
 
 class ShannonCreator(object):
@@ -102,10 +103,11 @@ class CoreResource(Item):
             f.trap(NonexistentObject)
             return 'Object not found.'
 
-        def _cb(d):
-            return repr(d)
+        def _toJSON(d):
+            return json.dumps(d, cls=retrieveEncoder)
+
         d = cassandra.retrieve(shannonID).addErrback(_notFound)
-        d.addCallback(_cb)
+        d.addCallback(_toJSON)
         return d
 
 
@@ -184,6 +186,8 @@ class CoreResource(Item):
             return "Shannon"
         if name == 'new':
             return ShannonCreator()
+        if name == 'favicon.ico':
+            return None
         else:
             return self
         return None
