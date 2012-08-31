@@ -25,7 +25,8 @@ class ShannonCreator(object):
     """
     implements(IResource)
 
-    def __init__(self, entropyURI=u'http://localhost:8080/'):
+    def __init__(self, cassandra, entropyURI=u'http://localhost:8080/'):
+        self.cassandra = cassandra
         self.entropyURI = entropyURI
 
 
@@ -70,7 +71,7 @@ class ShannonCreator(object):
         d.addCallback(_cb)
 
         tags = tagsToDict(metadata['X-Shannon-Tags'])
-        d.addCallback(CassandraIndex().insert,
+        d.addCallback(self.cassandra.insert,
             metadata['X-Entropy-Name'],
             metadata['X-Shannon-Description'],
             tags)
@@ -87,6 +88,11 @@ class CoreResource(Item):
 
     addSlash = inmemory()
     hash = text(allowNone=False, default=u'sha256')
+    cassandra = inmemory()
+
+    def __init__(self):
+        self.cassandra = CassandraIndex()
+
 
     def getObject(self, shannonID):
         """
@@ -98,7 +104,6 @@ class CoreResource(Item):
         @return: A Deferred which will fire the return value of
             CassandraIndex.retrieve(name) if the object is found.
         """
-        cassandra = CassandraIndex()
         def _notFound(f):
             f.trap(NonexistentObject)
             return 'Object not found.'
@@ -106,7 +111,7 @@ class CoreResource(Item):
         def _toJSON(d):
             return json.dumps(d, cls=retrieveEncoder)
 
-        d = cassandra.retrieve(shannonID).addErrback(_notFound)
+        d = self.cassandra.retrieve(shannonID).addErrback(_notFound)
         d.addCallback(_toJSON)
         return d
 
@@ -125,7 +130,7 @@ class CoreResource(Item):
         def _cb(entropyID):
             entropyID = entropyID.encode('ascii')
             tags = tagsToDict(metadata['X-Shannon-Tags'])
-            return CassandraIndex().update(shannonID,
+            return self.cassandra.update(shannonID,
                 shannonDescription=metadata['X-Shannon-Description'],
                 entropyID=entropyID,
                 entropyName=metadata['X-Entropy-Name'],
@@ -150,7 +155,7 @@ class CoreResource(Item):
             d.addCallback(lambda a: 'Updated!')
             return d
         else:
-            return CassandraIndex().update(shannonID, metadata)
+            return self.cassandra.update(shannonID, metadata)
 
 
     # IResource
@@ -185,7 +190,7 @@ class CoreResource(Item):
         if name == '':
             return "Shannon"
         if name == 'new':
-            return ShannonCreator()
+            return ShannonCreator(self.cassandra)
         if name == 'favicon.ico':
             return None
         else:
