@@ -34,6 +34,13 @@ class CassandraIndexTests(TestCase):
         self.index = CassandraIndex(factory=FakeConnectionPool)
 
 
+    def test_time(self):
+        """
+        An epoch represented in milliseconds
+        """
+        self.assertEqual(13, len(str(self.index._time())))
+
+
     def test_insert(self):
         tags = {'name':'value','name2':None}
         self.index.insert('entropyID', 'name', 'description', tags)

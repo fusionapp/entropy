@@ -11,6 +11,9 @@ from entropy.errors import NonexistentObject
 
 
 class CassandraIndex(object):
+    """
+    Object for retrieving, creating and updating shannon objects.
+    """
     def __init__(self, hostname='localhost', port=9160, keyspace='shannon', factory=None):
         if not factory:
             factory = ConnectionPool
