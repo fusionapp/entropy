@@ -58,9 +58,9 @@ class ShannonCreator(object):
 
         # Checks for required headers.
         if not metadata['X-Entropy-Name']:
-            raise ValueError('X-Entropy-Name is manditory')
+            raise ValueError('X-Entropy-Name is mandatory')
         if not metadata['X-Shannon-Description']:
-            raise ValueError('X-Shannon-Description is manditory')
+            raise ValueError('X-Shannon-Description is mandatory')
 
         def _cb(objectId):
             objectId = objectId.encode('ascii')
@@ -147,7 +147,7 @@ class CoreResource(Item):
                     raise DigestMismatch(expectedHash, actualHash)
 
             if not metadata['X-Entropy-Name']:
-                raise ValueError('X-Entropy-Name is manditory')
+                raise ValueError('X-Entropy-Name is mandatory')
 
             d = RemoteEntropyStore(entropyURI=u'http://localhost:8080/'
                 ).storeObject(data, contentType)

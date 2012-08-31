@@ -79,7 +79,7 @@ class Client(object):
 
         if entropyData:
             if not entropyName:
-                raise ValueError('entropyName is manditory.')
+                raise ValueError('entropyName is mandatory.')
             digest = hashlib.md5(entropyData).digest()
         else:
             digest = ''
