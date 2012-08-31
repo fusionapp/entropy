@@ -156,7 +156,7 @@ class CassandraIndex(object):
         d.addCallback(lambda res: {'attachments':res})
         return d
 
-    
+
     def _retrieveTags(self, shannonID):
         d = self.pool.runQuery('''
             SELECT * FROM tags WHERE shannonID = :shannonID''',
