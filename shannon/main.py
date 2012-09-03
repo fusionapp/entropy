@@ -90,8 +90,7 @@ class CoreResource(Item):
     hash = text(allowNone=False, default=u'sha256')
     cassandra = inmemory()
 
-    def __init__(self, store):
-        super(CoreResource, self).__init__(store=store)
+    def activate(self):
         self.cassandra = CassandraIndex()
 
 
