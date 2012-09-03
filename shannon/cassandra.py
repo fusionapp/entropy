@@ -142,9 +142,14 @@ class CassandraIndex(object):
 
 
     def _retrieveShannon(self, shannonID):
+        def _checkResult(result):
+            if not result:
+                raise NonexistentObject(shannonID)
+            return result
         d = self.pool.runQuery('''
             SELECT * FROM shannon WHERE shannonID = :shannonID''',
             dict(shannonID=str(shannonID)))
+        d.addCallback(_checkResult)
         d.addCallback(lambda res: {'shannon':res[0]})
         return d
 
@@ -172,16 +177,10 @@ class CassandraIndex(object):
 
         @return: A list containing attachments, tags and the shannon entity data.
         """
-        def _checkResult(result):
-            if not result:
-                raise NonexistentObject(shannonID)
-            return result
-
         ds = [
             self._retrieveShannon(shannonID),
             self._retrieveAttachments(shannonID),
             self._retrieveTags(shannonID)]
 
         d = gatherResults(ds)
-        d.addCallback(_checkResult)
         return d
