@@ -182,5 +182,5 @@ class CassandraIndex(object):
             self._retrieveAttachments(shannonID),
             self._retrieveTags(shannonID)]
 
-        d = gatherResults(ds)
+        d = gatherResults(ds, consumeErrors=True)
         return d
