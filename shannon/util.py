@@ -2,6 +2,8 @@ from xmantissa.offering import InstalledOffering
 from json import JSONEncoder
 from uuid import UUID
 
+from twisted.python.failure import Failure
+
 
 def getAppStore(siteStore):
     """
@@ -54,7 +56,12 @@ def tagsToDict(tags):
 
 
 
-class retrieveEncoder(JSONEncoder):
+class shannonEncoder(JSONEncoder):
+    """
+    Handles encoding of L{Failure} and L{UUID} objects.
+    """
     def default(self, obj):
+        if isinstance(obj, Failure):
+            return {obj.value.__class__.__name__: obj.value.message}
         if isinstance(obj, UUID):
             return str(obj)

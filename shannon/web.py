@@ -7,7 +7,7 @@ from axiom.attributes import path
 
 from xmantissa.ixmantissa import IProtocolFactoryFactory
 
-from shannon.main import getResourceTree
+from shannon.main import getRootResource
 
 
 class SimpleSiteFactory(Item):
@@ -20,4 +20,4 @@ class SimpleSiteFactory(Item):
     httpLog = path(default=None)
 
     def getFactory(self):
-        return Site(getResourceTree())
+        return Site(getRootResource())
