@@ -80,10 +80,7 @@ class CoreResource(Resource):
         """
         def _notFound(f):
             return f.value[0]
-
-        def _toJSON(d):
-            return json.dumps(d, cls=shannonEncoder)
-
+        
         d = self.cassandra.retrieve(shannonID).addErrback(_notFound)
         return d
 
@@ -149,7 +146,7 @@ class CoreResource(Resource):
 
 class ShannonCreator(Resource):
     """
-    Resource for storing new objects in entropy, and metadata in cassandra.
+    Resource for storing new objects in entropy, and metadata in Cassandra.
     """
     def __init__(self, cassandra, entropyURI=u'http://localhost:8080/'):
         self.cassandra = cassandra

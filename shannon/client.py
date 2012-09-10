@@ -8,6 +8,9 @@ from shannon.util import tagsToStr
 
 
 class Client(object):
+    """
+    A client for interacting with a Shannon service.
+    """
     def __init__(self, uri):
         self.shannonURI = uri
         self.contentType = 'text/html; charset=ISO-8859-1'
