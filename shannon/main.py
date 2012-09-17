@@ -17,6 +17,15 @@ from shannon.util import metadataFromHeaders, tagsToDict, ShannonEncoder
 def getRootResource(hostname, port, keyspace):
     """
     Returns the root Resource.
+    
+    @param hostname: The Cassandra node's hostname.
+    @type hostname: C{str}.
+
+    @param port: The Cassandra node's port.
+    @type port: C{int}.
+
+    @param keyspace: The Cassandra keyspace to use.
+    @type keyspace: C{str}.
     """
     cassandra = CassandraIndex(hostname=hostname, port=port, keyspace=keyspace)
     resource = ShannonDispatch(cassandra)
