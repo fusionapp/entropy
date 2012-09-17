@@ -56,7 +56,7 @@ def tagsToDict(tags):
 
 
 
-class shannonEncoder(JSONEncoder):
+class ShannonEncoder(JSONEncoder):
     """
     Handles encoding of L{Failure} and L{UUID} objects.
     """

@@ -10,41 +10,39 @@ from entropy.errors import DigestMismatch
 from entropy.store import RemoteEntropyStore
 
 from shannon.cassandra import CassandraIndex
-from shannon.util import metadataFromHeaders, tagsToDict, shannonEncoder
+from shannon.util import metadataFromHeaders, tagsToDict, ShannonEncoder
 
 
 
-def getRootResource():
+def getRootResource(hostname, port, keyspace):
     """
     Returns the root Resource.
     """
-    cassandra = CassandraIndex()
+    cassandra = CassandraIndex(hostname=hostname, port=port, keyspace=keyspace)
     resource = ShannonDispatch(cassandra)
     resource.putChild("new", ShannonCreator(cassandra))
     return resource
 
 
-def _writeRequest(d, request, status='success'):
+def _writeRequest(d, request):
     """
-    Converts data to valid JSONwrites to the request and calls finish().
+    Converts data to valid JSON, writes to the request and calls finish().
 
     @param d: The data to convert to JSON and write to the request.
     @type d: Objects supported by json.dumps also L{UUID} and L{Failure}.
 
     @param request: The request object to write to.
     @type request: L{twisted.web.iweb.IRequest}
-
-    @param status: The status returned in JSON. Automaticly set
-        to 'failure' if d is a Failure.
-    @type status: C{str}.
     """
     def _toJSON(d):
         _json= {}
         _json['response'] = d
-        _json['status'] = status
-        if isinstance(d, Failure):
-            _json['status'] = 'failure'
-        return json.dumps(_json, cls=shannonEncoder)
+        return json.dumps(_json, cls=ShannonEncoder)
+
+    if isinstance(d, Failure):
+       request.setResponseCode(500)
+    else:
+        request.setResponseCode(200)
 
     request.setHeader('content-type', 'application/json')
     request.write(_toJSON(d))
@@ -54,7 +52,8 @@ def _writeRequest(d, request, status='success'):
 
 class InvalidUUID(Resource):
     def render(self, request):
-        _writeRequest("Invalid Shannon UUID", request, status='failure')
+        request.setResponseCode(404)
+        _writeRequest("Invalid Shannon UUID", request)
         return NOT_DONE_YET
 
 

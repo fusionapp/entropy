@@ -3,15 +3,14 @@ Dropin with Entropy offering.
 """
 from xmantissa.offering import Offering
 
-from shannon.main import CoreResource
-from shannon.web import SimpleSiteFactory as ShannonSiteFactory
+from shannon.web import ShannonSiteFactory
 
 
 plugin = Offering(
     name=u'Shannon',
     description=u'',
     siteRequirements=[(None, ShannonSiteFactory)],
-    appPowerups=[CoreResource],
+    appPowerups=[],
     installablePowerups=[],
     loginInterfaces=[],
     themes=[])

@@ -3,7 +3,7 @@ from uuid import uuid1
 
 from twisted.trial.unittest import TestCase
 
-from shannon.util import (tagsToStr, tagsToDict, shannonEncoder)
+from shannon.util import (tagsToStr, tagsToDict, ShannonEncoder)
 
 
 
@@ -35,19 +35,19 @@ class UtilTests(TestCase):
         self.assertEqual(tagDict, tagsToDict(tag))
 
 
-    def test_shannonEncoderUUID(self):
+    def test_ShannonEncoderUUID(self):
         """
-        C{shannonEncoder} handles json.UUID objects.
+        C{ShannonEncoder} handles json.UUID objects.
         """
         id = uuid1()
-        result = json.dumps(id, cls=shannonEncoder)
+        result = json.dumps(id, cls=ShannonEncoder)
         self.assertEqual('"%s"' % str(id), result)
     
-    def test_shannonEncoderFailure(self):
+    def test_ShannonEncoderFailure(self):
         """
-        C{shannonEncoder} handles L{twisted.python.failure.Failure} objects.
+        C{ShannonEncoder} handles L{twisted.python.failure.Failure} objects.
         """
         from twisted.python.failure import Failure
-        result = json.dumps(Failure(ValueError('testing')), cls=shannonEncoder)
+        result = json.dumps(Failure(ValueError('testing')), cls=ShannonEncoder)
         self.assertEqual('{"ValueError": "testing"}', result)
 
