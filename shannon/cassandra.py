@@ -33,6 +33,20 @@ class CassandraIndex(object):
 
 
     def _insertTag(self, shannonID, key, value):
+        """
+        Inserts a single tag into the 'tags' column family.
+
+        @param shannonID: The shannonID to associate the tag with.
+        @type shannonID: C{str}.
+
+        @param key: The key of the tag.
+        @type key: C{str}.
+
+        @param value: The value of the tag.
+        @type value: C{str}.
+
+        @return: A Deferred which eventualy results in a shannonID.
+        """
         d = self.pool.runOperation('''
         INSERT INTO tags (
         shannonID, key, value) VALUES (:shannonID, :key, :value)''',
@@ -43,6 +57,17 @@ class CassandraIndex(object):
 
 
     def _insertTags(self, shannonID, tags):
+        """
+        Inserts multiple tags into the 'tags' column family.
+
+        @param shannonID: The shannonID to associate all the tags with.
+        @type shannonID: C{str}.
+
+        @param tags: A list of tags to be inserted.
+        @type tags: C{dict}.
+
+        @return: A Deferred which eventualy results in a shannonID.
+        """
         ds = []
         for key, value in tags.iteritems():
             ds.append(self._insertTag(shannonID, key, value))
@@ -53,6 +78,20 @@ class CassandraIndex(object):
 
 
     def _insertAttachment(self, shannonID, name, entropyID):
+        """
+        Inserts an attachment into the 'attachments' column family.
+
+        @param shannonID: The shannonID to associate the attachment with.
+        @type shannonID: C{str}.
+
+        @param name: The name of the attachment.
+        @type name: C{str}.
+
+        @param entropyID: The ID for the entropy object attached.
+        @type entropyID: C{str}.
+
+        @return: A Deferred which eventualy results in a shannonID.
+        """
         d = self.pool.runOperation('''
             INSERT INTO attachments (shannonID, name, entropyID)
             VALUES (:shannonID, :name, :entropyID)''',
@@ -63,6 +102,17 @@ class CassandraIndex(object):
 
 
     def _updateShannon(self, shannonID, description):
+        """
+        Updates a shannon object. The description is the only mutable column.
+
+        @param shannonID: The ID of the Shannon object.
+        @type shannonID: C{str}.
+
+        @param description: The new Shannon description.
+        @type description: C{str}.
+
+        @return: A Deferred which eventualy results in a shannonID.
+        """
         d = self.pool.runOperation('''
             UPDATE shannon SET description = :description
             WHERE shannonID = :shannonID''',
@@ -72,6 +122,17 @@ class CassandraIndex(object):
 
 
     def _insertShannon(self, shannonID, description):
+        """
+        Inserts a new shannon row into the 'shannon' column family.
+
+        @param shannonID: The ID of the Shannon object.
+        @type shannonID: C{str}.
+
+        @param description: The description of the Shannon object.
+        @type description: C{str}.
+
+        @return: A Deferred which eventualy results in a shannonID.
+        """
         d = self.pool.runOperation('''
             INSERT INTO shannon (shannonID, created )
             VALUES (:shannonID, :created)''',
@@ -85,6 +146,8 @@ class CassandraIndex(object):
 
     def insert(self, entropyID, entropyName, shannonDescription, tags=None):
         """
+        Creates a new Shannon object.
+
         @param entropyID: The ID of the entropy object to insert.
         @type entropyID: C{str}.
 
@@ -109,6 +172,8 @@ class CassandraIndex(object):
 
     def update(self, shannonID, shannonDescription=None, entropyID=None, entropyName=None, tags=None):
         """
+        Updates an existing Shannon object.
+
         @param shannonID: The shannonID of the shannon object.
         @type shannonID: C{str}.
 
@@ -142,6 +207,12 @@ class CassandraIndex(object):
 
 
     def _retrieveShannon(self, shannonID):
+        """
+        Retrieves the 'shannon' column family row associated with the shannonID.
+
+        @param shannonID: The ID of the Shannon object to retrieve.
+        @type shannonID: C{str}.
+        """
         def _checkResult(result):
             if not result:
                 raise NonexistentObject(shannonID)
@@ -155,6 +226,12 @@ class CassandraIndex(object):
 
 
     def _retrieveAttachments(self, shannonID):
+        """
+        Retrieves the attachmens associated with the C{shannonID}.
+
+        @param shannonID: The shannonID associated with the attachments.
+        @type shannonID: C{str}.
+        """
         d = self.pool.runQuery('''
             SELECT * FROM attachments WHERE shannonID = :shannonID''',
             dict(shannonID=shannonID))
@@ -163,6 +240,12 @@ class CassandraIndex(object):
 
 
     def _retrieveTags(self, shannonID):
+        """
+        Retrieves the tags associated with the shannonID.
+
+        @param shannonID: The shannonID associated with the tags.
+        @type shannonID: C{str}.
+        """
         d = self.pool.runQuery('''
             SELECT * FROM tags WHERE shannonID = :shannonID''',
             dict(shannonID=shannonID))
@@ -172,6 +255,8 @@ class CassandraIndex(object):
 
     def retrieve(self, shannonID):
         """
+        Retrieves a Shannon object.
+
         @param shannonID: The shannonID of the object to retrieve.
         @type shannonID: C{str}.
 

@@ -26,7 +26,8 @@ def getRootResource(hostname, port, keyspace):
 
 def _writeRequest(d, request):
     """
-    Converts data to valid JSON, writes to the request and calls finish().
+    Converts data to valid JSON, writes the data to the request and calls
+    request.finish().
 
     @param d: The data to convert to JSON and write to the request.
     @type d: Objects supported by json.dumps also L{UUID} and L{Failure}.
@@ -51,7 +52,14 @@ def _writeRequest(d, request):
 
 
 class InvalidUUID(Resource):
+    """
+    Resource returned when an invalid UUID is requested.
+    """
     def render(self, request):
+        """
+        Sets the response code to 404.
+        Returns JSON explaining that the UUID was invalid.
+        """
         request.setResponseCode(404)
         _writeRequest("Invalid Shannon UUID", request)
         return NOT_DONE_YET
@@ -153,6 +161,9 @@ class ShannonCreator(Resource):
 
 
     def render_GET(self, request):
+        """
+        This method explains that the correct method to use is a POST.
+        """
         return 'POST data here to create an object.'
 
 
@@ -197,12 +208,20 @@ class ShannonCreator(Resource):
 
 
 class ShannonDispatch(Resource):
+    """
+    Handles the dispatch of dynamic URLs.
+    """
     def __init__(self, cassandra):
         Resource.__init__(self)
         self.cassandra = cassandra
 
 
     def getChild(self, path, request):
+        """
+        Checks that the UUID requested is valid.
+        
+        @return: L{CoreResource}.
+        """
         try:
             UUID(path)
         except ValueError:

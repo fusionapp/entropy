@@ -10,6 +10,12 @@ from shannon.util import tagsToStr
 class Client(object):
     """
     A client for interacting with a Shannon service.
+
+    @ivar shannonURI: The URI of the Shannon service to connect to.
+    @type shannonURI: C{unicode}.
+
+    @ivar contentType: The content-type header sent to the Shannon service.
+    @type contentType: C{str}.
     """
     def __init__(self, uri):
         self.shannonURI = uri
@@ -18,6 +24,8 @@ class Client(object):
 
     def retrieve(self, shannonID):
         """
+        Retrieves a Shannon object.
+
         @param shannonID: The shannonID of the entity you want to retrieve.
         @type shannonID: C{str}
 
@@ -28,13 +36,15 @@ class Client(object):
 
     def create(self, entropyData, entropyName, shannonDescription, tags=''):
         """
+        Creates a new Shannon object.
+
         @param entropyData: The data you want to store.
         @type entropyData: C{str}.
 
         @param entropyName: The name of the data.
         @type entropyName: C{str}.
 
-        @param shannonDescription: The description of the shannon entity.
+        @param shannonDescription: The description of the Shannon entity.
         @type shannonDescription: C{str}.
 
         @param tags: Optional key-value-tags to store.
@@ -60,6 +70,8 @@ class Client(object):
 
     def update(self, shannonID, entropyData='', entropyName='', shannonDescription='', tags=''):
         """
+        Updates an existing Shannon object.
+
         @param shannonID: The shannonID of the entity you want to update.
         @type shannonID: C{str}.
 
