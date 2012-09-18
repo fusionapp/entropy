@@ -50,7 +50,7 @@ def _writeRequest(d, request):
         return json.dumps(_json, cls=ShannonEncoder)
 
     if isinstance(d, Failure):
-       request.setResponseCode(500)
+        request.setResponseCode(500)
     else:
         request.setResponseCode(200)
 
