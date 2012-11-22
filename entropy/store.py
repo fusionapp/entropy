@@ -654,7 +654,7 @@ class UploadScheduler(Item):
     # IUploadScheduler
 
     def scheduleUpload(self, objectId, backend):
-        upload = _PendingUpload(
+        _PendingUpload(
             store=self.store,
             objectId=objectId,
             backend=backend)
