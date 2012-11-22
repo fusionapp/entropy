@@ -57,7 +57,7 @@ class DeferredTests(TestCase):
         value.
         """
         d = testfn(50)
-        return d.addCallback(lambda result: self.assertEqual(result, 50))
+        return d.addCallback(lambda result: self.assertEquals(result, 50))
 
     def test_failure(self):
         """
