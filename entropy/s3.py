@@ -10,9 +10,11 @@ from axiom.attributes import text
 
 from txaws.service import AWSServiceRegion
 from txaws.credentials import AWSCredentials
+from txaws.s3.exception import S3Error
 
 from entropy.ientropy import IContentStore
 from entropy.util import MemoryObject
+from entropy.errors import NonexistentObject
 
 
 class S3Store(Item):
@@ -66,11 +68,15 @@ class S3Store(Item):
                 contentType=unicode(headers['content-type'][0], 'utf-8'),
                 created=None)
 
+        def _eb(f):
+            f.trap(S3Error)
+            raise NonexistentObject(objectId)
+
         client = self._getClient()
         query = client.query_factory(
             action='GET', creds=client.creds, endpoint=client.endpoint,
             bucket=self.bucket.encode('utf-8'),
             object_name=objectId.encode('utf-8'))
         d = query.submit()
-        d.addCallback(_makeObject)
+        d.addCallbacks(_makeObject, _eb)
         return d
