@@ -723,15 +723,6 @@ class ImmutableObjectTests(TestCase):
         self.assertEquals(res.encoding, None)
 
 
-    def test_adaptDamagedObject(self):
-        """
-        Adapting L{ImmutableObject} to L{IResource} verifies the object
-        contents.
-        """
-        self.testObject.content.setContent('garbage!')
-        self.assertRaises(CorruptObject, IResource, self.testObject)
-
-
 
 class TestMigration(Item):
     """
