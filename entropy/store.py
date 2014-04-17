@@ -101,7 +101,6 @@ def objectResource(obj):
     """
     Adapt L{ImmutableObject) to L{IResource}.
     """
-    obj.verify()
     res = File(obj.content.path)
     res.type = obj.contentType.encode('ascii')
     res.encoding = None
