@@ -62,7 +62,7 @@ class ImmutableObject(Item):
     implements(IContentObject)
 
     hash = text(allowNone=False)
-    contentDigest = text(allowNone=False)
+    contentDigest = text(allowNone=False, indexed=True)
     content = path(allowNone=False)
     contentType = text(allowNone=False)
     created = timestamp(allowNone=False, defaultFactory=lambda: Time())
