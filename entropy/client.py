@@ -34,13 +34,13 @@ class Endpoint(object):
         self._agent = agent
 
 
-    def _parseResponse(self, response, objectId=None):
+    def _parseResponse(self, response):
         """
         Parse an Entropy HTTP response.
         """
         def _checkResult(result):
             if response.code >= 400:
-                raise APIError(result, response.code, reason=None)
+                raise APIError(result, response.code)
             return result, response
 
         d = readBody(response)
