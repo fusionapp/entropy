@@ -60,7 +60,7 @@ class RemoteEntropyStoreTests(TestCase):
         self.assertEqual([], self.agent.responses)
         response.code = http.NOT_FOUND
         response.respond('Not found')
-        f = self.failureResultOf(d)
+        f = self.failureResultOf(d, NonexistentObject)
         self.assertEqual(f.value.objectId, objectId)
 
 
