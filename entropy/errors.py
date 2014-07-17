@@ -45,3 +45,21 @@ class DigestMismatch(ValueError):
     def __str__(self):
         return 'Expected digest %r but got digest %r' % (
             self.expected, self.actual)
+
+
+
+class APIError(RuntimeError):
+    """
+    A client's interaction with Entropy was interrupted by an error.
+    """
+    def __init__(self, message, code, reason=None):
+        """
+        @type  code: L{int}
+        @param code: Error code.
+
+        @type  reason: L{twisted.python.failure.Failure}
+        @param reason: Original failure.
+        """
+        Exception.__init__(self, message)
+        self.code = code
+        self.reason = reason
