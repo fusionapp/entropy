@@ -13,8 +13,6 @@ from zope.interface import implements
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
 from twisted.application.service import IService
-from twisted.python.failure import Failure
-from twisted.web.client import ResponseDone
 from twisted.web import http
 
 from axiom.store import Store

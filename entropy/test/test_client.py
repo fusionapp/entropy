@@ -7,7 +7,7 @@ from twisted.web import http
 from twisted.web.http_headers import Headers
 
 from entropy.client import Endpoint
-from entropy.errors import APIError, NonexistentObject
+from entropy.errors import APIError
 from entropy.test.util import DummyAgent
 
 
@@ -109,22 +109,3 @@ class EndpointTests(TestCase):
             ('some_data', u'sha256', u'an_id', u'applicaton/pdf', {}),
             (obj.content, obj.hash, obj.contentDigest, obj.contentType,
              obj.metadata))
-
-
-    def test_getNonexistent(self):
-        """
-        L{NonexistentObject} is the L{APIError} reason given when attempting to
-        retrieve a nonexistent Entropy object.
-        """
-        d = self.endpoint.get(u'sha256:an_id')
-        response = self.agent.responses.pop()
-        self.assertEqual([], self.agent.responses)
-        response.code = http.NOT_FOUND
-        response.respond('Not found')
-        f = self.failureResultOf(d, APIError)
-        self.assertEqual(
-            (http.NOT_FOUND, 'Not found'),
-            (f.value.code, f.value.message))
-        reason = f.value.reason.value
-        self.assertIsInstance(reason, NonexistentObject)
-        self.assertEqual('sha256:an_id', str(reason))

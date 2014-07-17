@@ -33,7 +33,7 @@ from axiom.dependency import dependsOn
 from twisted.web import http
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.internet.defer import succeed, gatherResults
+from twisted.internet.defer import succeed, gatherResults, fail
 from twisted.application.service import Service, IService
 from twisted.internet.task import cooperate
 
@@ -44,7 +44,8 @@ from nevow.rend import NotFound
 from entropy.ientropy import (
     IContentStore, IContentObject, ISiblingStore, IBackendStore,
     IUploadScheduler, IMigrationManager, IMigration)
-from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch, APIError
+from entropy.errors import (
+    CorruptObject, NonexistentObject, DigestMismatch, APIError)
 from entropy.hash import getHash
 from entropy.util import deferred
 from entropy.client import Endpoint
@@ -488,8 +489,8 @@ class RemoteEntropyStore(Item):
     def getObject(self, objectId):
         def _checkError(f):
             f.trap(APIError)
-            if f.value.reason is not None:
-                return f.value.reason
+            if f.value.code == http.NOT_FOUND:
+                return fail(NonexistentObject(objectId))
             return f
 
         d = self._client.get(objectId)

@@ -6,13 +6,11 @@ from base64 import b64encode
 from epsilon.extime import Time
 from StringIO import StringIO
 from twisted.internet import reactor
-from twisted.python.failure import Failure
 from twisted.python.urlpath import URLPath
-from twisted.web import http
 from twisted.web.client import Agent, readBody, FileBodyProducer
 from twisted.web.http_headers import Headers
 
-from entropy.errors import APIError, NonexistentObject
+from entropy.errors import APIError
 from entropy.util import MemoryObject
 
 
@@ -41,11 +39,7 @@ class Endpoint(object):
         Parse an Entropy HTTP response.
         """
         def _checkResult(result):
-            if response.code == http.NOT_FOUND:
-                raise APIError(
-                    result, response.code,
-                    Failure(NonexistentObject(objectId)))
-            elif response.code >= http.BAD_REQUEST:
+            if response.code >= 400:
                 raise APIError(result, response.code, reason=None)
             return result, response
 
