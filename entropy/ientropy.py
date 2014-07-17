@@ -1,5 +1,5 @@
 """
-@copyright: 2007-2011 Quotemaster cc. See LICENSE for details.
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
 
 Interface definitions for Entropy.
 """

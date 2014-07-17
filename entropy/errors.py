@@ -1,3 +1,6 @@
+"""
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+"""
 class UnknownHashAlgorithm(ValueError):
     """
     An unknown hash algorithm was specified.

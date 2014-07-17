@@ -1,3 +1,6 @@
+"""
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+"""
 import hashlib
 from base64 import b64encode
 from epsilon.extime import Time

@@ -1,3 +1,6 @@
+"""
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+"""
 from zope.interface import implements
 
 from epsilon.structlike import record

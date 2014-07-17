@@ -1,3 +1,6 @@
+"""
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+"""
 from entropy.errors import UnknownHashAlgorithm
 
 from hashlib import sha256
