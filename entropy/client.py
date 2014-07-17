@@ -7,6 +7,7 @@ from epsilon.extime import Time
 from StringIO import StringIO
 from twisted.internet import reactor
 from twisted.python.urlpath import URLPath
+from twisted.web import http
 from twisted.web.client import Agent, readBody, FileBodyProducer
 from twisted.web.http_headers import Headers
 
@@ -115,8 +116,34 @@ class Endpoint(object):
             objectId = objectId.decode('ascii')
         d = self._agent.request(
             'GET', str(self.uri.child(objectId.encode('ascii'))))
-        d.addCallback(self._parseResponse, objectId=objectId)
+        d.addCallback(self._parseResponse)
         d.addCallback(_makeContentObject)
+        return d
+
+
+    def exists(self, objectId):
+        """
+        Determine if the specific Entropy object exists.
+
+        @type  objectId: L{unicode}
+        @param objectId: Stored object identifier.
+
+        @raises L{APIError}: If there is an error retrieving the object from
+            the Entropy endpoint.
+
+        @rtype: L{Deferred} firing with L{bool}
+        @return: Object exists?
+        """
+        def _checkNotFound(f):
+            f.trap(APIError)
+            if f.value.code == http.NOT_FOUND:
+                return False
+            return f
+
+        d = self._agent.request(
+            'HEAD', str(self.uri.child(objectId.encode('ascii'))))
+        d.addCallback(self._parseResponse)
+        d.addCallbacks(lambda ignored: True, _checkNotFound)
         return d
 
 

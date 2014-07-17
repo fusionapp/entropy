@@ -45,8 +45,8 @@ class EndpointTests(TestCase):
         response.respond('Oops')
         f = self.failureResultOf(d, APIError)
         self.assertEqual(
-            (http.BAD_REQUEST, 'Oops', None),
-            (f.value.code, f.value.message, f.value.reason))
+            (http.BAD_REQUEST, 'Oops'),
+            (f.value.code, f.value.message))
 
 
     def test_success(self):
@@ -109,3 +109,32 @@ class EndpointTests(TestCase):
             ('some_data', u'sha256', u'an_id', u'applicaton/pdf', {}),
             (obj.content, obj.hash, obj.contentDigest, obj.contentType,
              obj.metadata))
+
+
+    def test_exists(self):
+        """
+        Determine if an Entropy object exists.
+        """
+        d = self.endpoint.exists(u'sha256:an_id')
+        response = self.agent.responses.pop()
+        self.assertEqual([], self.agent.responses)
+        self.assertEqual(
+            ('HEAD', 'http://example.com/entropy/sha256:an_id'),
+            (response.args[0], response.args[1]))
+        response.respond('')
+        self.assertTrue(self.successResultOf(d))
+
+
+    def test_doesNotExist(self):
+        """
+        Determine if an Entropy object does not exist.
+        """
+        d = self.endpoint.exists(u'sha256:an_id')
+        response = self.agent.responses.pop()
+        self.assertEqual([], self.agent.responses)
+        response.code = http.NOT_FOUND
+        self.assertEqual(
+            ('HEAD', 'http://example.com/entropy/sha256:an_id'),
+            (response.args[0], response.args[1]))
+        response.respond('')
+        self.assertFalse(self.successResultOf(d))
