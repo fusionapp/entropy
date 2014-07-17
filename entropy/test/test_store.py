@@ -34,6 +34,7 @@ from entropy.store import (
     RemoteEntropyStore)
 from entropy.util import MemoryObject
 from entropy.test.util import DummyAgent
+from entropy.client import Endpoint
 
 
 
@@ -44,10 +45,15 @@ class RemoteEntropyStoreTests(TestCase):
     def setUp(self):
         self.uri = u'http://localhost:8080/'
         self.agent = DummyAgent()
+        self.store = Store(self.mktemp())
         self.remoteEntropyStore = RemoteEntropyStore(
-            store=Store(),
-            entropyURI=self.uri,
-            _agent=self.agent)
+            store=self.store,
+            entropyURI=self.uri)
+        object.__setattr__(
+            self.remoteEntropyStore,
+            '_endpoint',
+            Endpoint(uri=self.uri,
+                     agent=self.agent))
 
 
     def test_nonexistentObject(self):

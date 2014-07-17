@@ -464,22 +464,17 @@ class RemoteEntropyStore(Item):
     entropyURI = text(allowNone=False,
                       doc="""The URI of the Entropy service in use.""")
 
-    _agent = inmemory()
-    _client = inmemory()
-
-    def __init__(self, *a, **kw):
-        self._agent = kw.pop('_agent')
-        super(RemoteEntropyStore, self).__init__(*a, **kw)
+    _endpoint = inmemory()
 
 
     def activate(self):
-        self._client = Endpoint(uri=self.entropyURI, agent=self._agent)
+        self._endpoint = Endpoint(uri=self.entropyURI)
 
 
     # IContentStore
 
     def storeObject(self, content, contentType, metadata={}, created=None):
-        return self._client.store(
+        return self._endpoint.store(
             content=content,
             contentType=contentType,
             metadata=metadata,
@@ -493,7 +488,7 @@ class RemoteEntropyStore(Item):
                 return fail(NonexistentObject(objectId))
             return f
 
-        d = self._client.get(objectId)
+        d = self._endpoint.get(objectId)
         d.addErrback(_checkError)
         return d
 
