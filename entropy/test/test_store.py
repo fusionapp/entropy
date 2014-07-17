@@ -1,5 +1,5 @@
 """
-@copyright: 2007-2011 Quotemaster cc. See LICENSE for details.
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
 
 Tests for L{entropy.store}.
 """
@@ -13,7 +13,9 @@ from zope.interface import implements
 from twisted.trial.unittest import TestCase
 from twisted.internet.defer import fail, succeed
 from twisted.application.service import IService
-from twisted.web.error import Error
+from twisted.python.failure import Failure
+from twisted.web.client import ResponseDone
+from twisted.web import http
 
 from axiom.store import Store
 from axiom.item import Item
@@ -29,8 +31,11 @@ from entropy.ientropy import (
     IContentStore, ISiblingStore, IBackendStore, IUploadScheduler, IMigration)
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (
-    ContentStore, ImmutableObject, ObjectCreator, MemoryObject, _PendingUpload,
-    MigrationManager, LocalStoreMigration, PendingMigration, RemoteEntropyStore)
+    ContentStore, ImmutableObject, ObjectCreator, _PendingUpload,
+    MigrationManager, LocalStoreMigration, PendingMigration,
+    RemoteEntropyStore)
+from entropy.util import MemoryObject
+from entropy.test.util import DummyAgent
 
 
 
@@ -40,82 +45,25 @@ class RemoteEntropyStoreTests(TestCase):
     """
     def setUp(self):
         self.uri = u'http://localhost:8080/'
-        self.remoteEntropyStore = RemoteEntropyStore(entropyURI=self.uri)
-
-
-    def test_getURI(self):
-        """
-        Returns the I{uri} + I{documentId}
-        """
-        documentId= u'1307990e6'
-
-        uri = self.remoteEntropyStore.getURI(documentId)
-        self.assertEquals(uri, self.uri + documentId)
-
-
-    def getPage(self, url, method, postdata, headers):
-        """
-        The parameters passed to C{getPage} need to remain constant.
-        """
-        self.assertEquals(url, self.uri + 'new')
-        self.assertEquals(method, 'PUT')
-        self.assertEquals(postdata, 'blahblah some data blahblah')
-        return succeed(url)
-
-
-    def test_storeObject(self):
-        """
-        Calls C{getPage} and returns the URL.
-        """
-        object.__setattr__(self.remoteEntropyStore, '_getPage',
-            self.getPage)
-
-        content = 'blahblah some data blahblah'
-        contentType = u'application/octet-stream'
-
-        d = self.remoteEntropyStore.storeObject(content, contentType)
-        d.addCallback(self.assertEquals, self.uri + 'new')
-        return d
-
-
-    def test_getObject(self):
-        """
-        Retrieving an object results in a L{MemoryObject}.
-        """
-        hash = 'sha256'
-        content = 'some data'
-        contentType = 'text/html; charset=ISO-8859-1'
-        contentDigest = u'1307990e6ba5ca145eb35e99182a9bec46531bc54ddf656a602c780fa0240dee'
-
-        objectId = '%s:%s' % (hash, contentDigest)
-        response_headers = {'content-type': [contentType]}
-        object.__setattr__(self.remoteEntropyStore, '_getPageWithHeaders',
-            lambda a: succeed((content, response_headers)))
-
-        def _checkObject(memory):
-            self.assertEquals(memory.objectId, objectId)
-            self.assertEquals(memory.hash, 'sha256')
-            self.assertEquals(memory.contentDigest, contentDigest)
-            self.assertEquals(memory.contentType, contentType)
-            self.assertEquals(memory.content, content)
-
-        d = self.remoteEntropyStore.getObject(objectId)
-        d.addCallback(_checkObject)
-        return d
+        self.agent = DummyAgent()
+        self.remoteEntropyStore = RemoteEntropyStore(
+            store=Store(),
+            entropyURI=self.uri,
+            _agent=self.agent)
 
 
     def test_nonexistentObject(self):
         """
         Retrieving a nonexistent object results in L{NonexistentObject}.
         """
-        object.__setattr__(self.remoteEntropyStore, '_getPageWithHeaders',
-            lambda a: fail(Error('404')))
-
         objectId = u'sha256:NOSUCHOBJECT'
         d = self.remoteEntropyStore.getObject(objectId)
-        d = self.assertFailure(d, NonexistentObject)
-        d.addCallback(lambda e: self.assertEquals(e.objectId, objectId))
-        return d
+        response = self.agent.responses.pop()
+        self.assertEqual([], self.agent.responses)
+        response.code = http.NOT_FOUND
+        response.respond('Not found')
+        f = self.failureResultOf(d)
+        self.assertEqual(f.value.objectId, objectId)
 
 
 
