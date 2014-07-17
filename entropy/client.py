@@ -105,7 +105,7 @@ class Endpoint(object):
         @return: Content object.
         """
         def _makeContentObject((data, response)):
-            hash, contentDigest = objectId.split(':', 1)
+            hash, contentDigest = objectId.split(u':', 1)
             contentType = response.headers.getRawHeaders(
                 'Content-Type', ['application/octet-stream'])[0].decode('ascii')
             # XXX: Actually get the real creation time
@@ -113,7 +113,7 @@ class Endpoint(object):
                 content=data,
                 hash=hash,
                 contentDigest=contentDigest,
-                contentType=contentType.decode('ascii'),
+                contentType=contentType,
                 metadata={},
                 created=Time())
 
