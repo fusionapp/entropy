@@ -1,32 +1,14 @@
+"""
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+"""
 from StringIO import StringIO
-from twisted.internet.defer import succeed
-from twisted.python.failure import Failure
 from twisted.trial.unittest import TestCase
 from twisted.web import http
-from twisted.web.client import ResponseDone
 from twisted.web.http_headers import Headers
-from twisted.web.test.test_agent import DummyResponse
 
 from entropy.client import Endpoint
 from entropy.errors import APIError, NonexistentObject
-
-
-
-class _DummyAgent(object):
-    """
-    Dummy L{IAgent} that only uses L{DummyResponse}s.
-    """
-    def __init__(self):
-        self.responses = []
-
-
-    def request(self, method, uri, headers=None, bodyProducer=None):
-        if headers is None:
-            headers = Headers({})
-        response = DummyResponse()
-        response.args = (method, uri, headers, bodyProducer)
-        self.responses.append(response)
-        return succeed(response)
+from entropy.test.util import DummyAgent
 
 
 
@@ -48,7 +30,7 @@ class EndpointTests(TestCase):
     Tests for L{entropy.client.Endpoint}.
     """
     def setUp(self):
-        self.agent = _DummyAgent()
+        self.agent = DummyAgent()
         self.endpoint = Endpoint(u'http://example.com/entropy/', self.agent)
 
 
@@ -58,10 +40,9 @@ class EndpointTests(TestCase):
         """
         d = self.endpoint.store('some_data', 'text/plain')
         response = self.agent.responses.pop()
-        response.code = http.BAD_REQUEST
         self.assertEqual([], self.agent.responses)
-        response.protocol.dataReceived('Oops')
-        response.protocol.connectionLost(Failure(ResponseDone()))
+        response.code = http.BAD_REQUEST
+        response.respond('Oops')
         f = self.failureResultOf(d, APIError)
         self.assertEqual(
             (http.BAD_REQUEST, 'Oops', None),
@@ -75,8 +56,7 @@ class EndpointTests(TestCase):
         d = self.endpoint.store('some_data', 'text/plain')
         response = self.agent.responses.pop()
         self.assertEqual([], self.agent.responses)
-        response.protocol.dataReceived('an_id')
-        response.protocol.connectionLost(Failure(ResponseDone()))
+        response.respond('an_id')
         self.assertEqual('an_id', self.successResultOf(d))
 
 
@@ -96,8 +76,7 @@ class EndpointTests(TestCase):
                 'Content-Type': ['text/plain'],
                 'Content-MD5': ['DZJHy840q6SsqNXIh6DwpA==']}),
             response.args[2])
-        response.protocol.dataReceived('an_id')
-        response.protocol.connectionLost(Failure(ResponseDone()))
+        response.respond('an_id')
         self.assertEqual('an_id', self.successResultOf(d))
 
         def _checkBody(result):
@@ -119,13 +98,12 @@ class EndpointTests(TestCase):
         """
         d = self.endpoint.get(u'sha256:an_id')
         response = self.agent.responses.pop()
-        response.headers.setRawHeaders('Content-Type', ['applicaton/pdf'])
         self.assertEqual([], self.agent.responses)
+        response.headers.setRawHeaders('Content-Type', ['applicaton/pdf'])
         self.assertEqual(
             ('GET', 'http://example.com/entropy/sha256:an_id'),
             (response.args[0], response.args[1]))
-        response.protocol.dataReceived('some_data')
-        response.protocol.connectionLost(Failure(ResponseDone()))
+        response.respond('some_data')
         obj = self.successResultOf(d)
         self.assertEqual(
             ('some_data', u'sha256', u'an_id', u'applicaton/pdf', {}),
@@ -140,10 +118,9 @@ class EndpointTests(TestCase):
         """
         d = self.endpoint.get(u'sha256:an_id')
         response = self.agent.responses.pop()
-        response.code = http.NOT_FOUND
         self.assertEqual([], self.agent.responses)
-        response.protocol.dataReceived('Not found')
-        response.protocol.connectionLost(Failure(ResponseDone()))
+        response.code = http.NOT_FOUND
+        response.respond('Not found')
         f = self.failureResultOf(d, APIError)
         self.assertEqual(
             (http.NOT_FOUND, 'Not found'),
