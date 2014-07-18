@@ -1,3 +1,6 @@
+"""
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+"""
 class UnknownHashAlgorithm(ValueError):
     """
     An unknown hash algorithm was specified.
@@ -45,3 +48,17 @@ class DigestMismatch(ValueError):
     def __str__(self):
         return 'Expected digest %r but got digest %r' % (
             self.expected, self.actual)
+
+
+
+class APIError(RuntimeError):
+    """
+    A client's interaction with Entropy was interrupted by an error.
+    """
+    def __init__(self, message, code):
+        """
+        @type  code: L{int}
+        @param code: Error code.
+        """
+        Exception.__init__(self, message)
+        self.code = code

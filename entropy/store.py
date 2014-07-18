@@ -1,5 +1,5 @@
 """
-@copyright: 2007-2011 Quotemaster cc. See LICENSE for details.
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
 
 Object data store.
 
@@ -17,7 +17,6 @@ locally to ensure local view consistency, and then queued for backend storage
 in a reliable fashion.
 """
 import hashlib
-from base64 import b64encode
 from datetime import timedelta
 from itertools import chain
 
@@ -31,11 +30,10 @@ from axiom.attributes import (
     text, path, timestamp, AND, inmemory, reference, integer)
 from axiom.dependency import dependsOn
 
-from twisted.web import http, error as eweb
-from twisted.web.client import getPage
+from twisted.web import http
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.internet.defer import succeed, gatherResults
+from twisted.internet.defer import succeed, gatherResults, fail
 from twisted.application.service import Service, IService
 from twisted.internet.task import cooperate
 
@@ -46,9 +44,11 @@ from nevow.rend import NotFound
 from entropy.ientropy import (
     IContentStore, IContentObject, ISiblingStore, IBackendStore,
     IUploadScheduler, IMigrationManager, IMigration)
-from entropy.errors import CorruptObject, NonexistentObject, DigestMismatch
+from entropy.errors import (
+    CorruptObject, NonexistentObject, DigestMismatch, APIError)
 from entropy.hash import getHash
-from entropy.util import deferred, getPageWithHeaders, MemoryObject
+from entropy.util import deferred
+from entropy.client import Endpoint
 
 
 
@@ -464,61 +464,33 @@ class RemoteEntropyStore(Item):
     entropyURI = text(allowNone=False,
                       doc="""The URI of the Entropy service in use.""")
 
-    def getURI(self, documentId):
-        """
-        Construct an Entropy URI for the specified document.
-        """
-        return self.entropyURI + documentId
+    _endpoint = inmemory()
+
+
+    def activate(self):
+        self._endpoint = Endpoint(uri=self.entropyURI)
 
 
     # IContentStore
 
     def storeObject(self, content, contentType, metadata={}, created=None):
-        digest = hashlib.md5(content).digest()
-        return self._getPage((self.entropyURI + 'new').encode('ascii'),
-                       method='PUT',
-                       postdata=content,
-                       headers={'Content-Length': len(content),
-                                'Content-Type': contentType,
-                                'Content-MD5': b64encode(digest)}
-                    ).addCallback(lambda url: unicode(url, 'ascii'))
+        return self._endpoint.store(
+            content=content,
+            contentType=contentType,
+            metadata=metadata,
+            created=created)
 
 
     def getObject(self, objectId):
-        hash, contentDigest = objectId.split(':', 1)
-
-        def _makeContentObject((data, headers)):
-            # XXX: Actually get the real creation time
-            return MemoryObject(
-                content=data,
-                hash=hash,
-                contentDigest=contentDigest,
-                contentType=unicode(headers['content-type'][0], 'ascii'),
-                metadata={},
-                created=Time())
-
-        def _eb(f):
-            f.trap(eweb.Error)
-            if f.value.status == '404':
-                raise NonexistentObject(objectId)
+        def _checkError(f):
+            f.trap(APIError)
+            if f.value.code == http.NOT_FOUND:
+                return fail(NonexistentObject(objectId))
             return f
 
-        return self._getPageWithHeaders(self.getURI(objectId)
-                    ).addCallbacks(_makeContentObject, _eb)
-
-
-    def _getPage(self, *a, **kw):
-        """
-        Calls L{twisted.web.client.getPage}
-        """
-        return getPage(*a, **kw)
-
-
-    def _getPageWithHeaders(self, *a, **kw):
-        """
-        Calls L{entropy.util.getPageWithHeaders}
-        """
-        return getPageWithHeaders(*a, **kw)
+        d = self._endpoint.get(objectId)
+        d.addErrback(_checkError)
+        return d
 
 
 

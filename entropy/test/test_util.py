@@ -1,3 +1,6 @@
+"""
+@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+"""
 from twisted.trial.unittest import TestCase
 from twisted.cred.portal import IRealm
 
