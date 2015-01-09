@@ -72,7 +72,6 @@ class EndpointTests(TestCase):
             (response.args[0], response.args[1]))
         self.assertEqual(
             Headers({
-                'Content-Length': [9],
                 'Content-Type': ['text/plain'],
                 'Content-MD5': ['DZJHy840q6SsqNXIh6DwpA==']}),
             response.args[2])
