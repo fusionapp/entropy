@@ -75,7 +75,6 @@ class Endpoint(object):
             contentType = contentType.encode('ascii')
         digest = hashlib.md5(content).digest()
         headers = Headers({
-            'Content-Length': [len(content)],
             'Content-Type': [contentType],
             'Content-MD5': [b64encode(digest)]})
         bodyProducer = FileBodyProducer(StringIO(content))
