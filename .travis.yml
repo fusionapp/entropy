@@ -6,7 +6,7 @@ matrix:
     - python: '2.7'
 
 install:
-  - pip install epsilon
+  - pip install epsilon pytz pycrypto
   - pip install .
 
 script:
