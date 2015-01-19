@@ -1,0 +1,19 @@
+language: python
+
+matrix:
+  include:
+    - python: pypy
+    - python: '2.7'
+
+install:
+  - pip install epsilon
+  - pip install .
+
+script:
+  - "$(type -p trial) entropy"
+
+notifications:
+  email: false
+  irc:
+    channels:
+      - secure: sVHE1vDHZOgB6mvQEv7zRqvS2Sg4vMCnlGxWhB3EvQ0hzJ+7lGLaQXjblstGYgpA+ohex0+s+cKcGlr+oeISTH9v9DZJv+XoPh7Z8CNxgoEjjVhivwOQFOGl9wwQ86pryNwVAdTlgK5l23dNF5ZYvnsj2yzL7/l3ht+0M1TvWok=
