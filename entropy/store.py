@@ -1,20 +1,34 @@
 """
-@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+@copyright: 2007-2015 Quotemaster cc. See LICENSE for details.
 
 Object data store.
 
-This service acts as a cache / access point for a backend object store;
-currently Amazon S3 is used as the backend store, but the architecture should
-be flexible enough to allow other possibilities. The system is designed to
-handle objects in an immutable fashion; once an object is created, it exists in
-perpetuity, and the contents will never change.
+This service acts as a cache / access point for one or more backend object
+stores. The configuration of backends is flexible, and a variety of backends
+are currently available, including a local on-disk store, and Amazon S3.
+Objects are addressed by content hash, and thus are immutable; as a result,
+storing an object is idempotent. Deletion of objects is not currently
+supported.
 
-The service's functionality is two-fold; firstly, it handles requests for
-retrieval of objects, servicing them from the local cache, fetching them from a
-neighbour cache, or retrieving them from the backend store. Secondly, it
-handles requests for storage of a new object; the object is first cached
-locally to ensure local view consistency, and then queued for backend storage
-in a reliable fashion.
+The service frontend provides a very limited set of operations:
+
+    - GET to retrieve an object.
+
+    - HEAD to retrieve just the metadata of an object.
+
+    - PUT to store an object.
+
+The implementation of these operations is driven by a configuration of
+backends; this consists of any number of L{entropy.ientropy.IReadStore},
+L{entropy.ientropy.IWriteStore}, and/or L{entropy.ientropy.IDeferredWriteStore}
+powerups.
+
+To retrieve an object, each C{IReadStore} will be consulted in priority order
+until the object is found, or the available backends are exhausted.
+
+To store an object, it is stored in each C{IWriteStore} backend before
+returning, and scheduled to be stored in each C{IDeferredWriteStore} at a later
+point in time.
 """
 import hashlib
 from datetime import timedelta

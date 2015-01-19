@@ -1,5 +1,5 @@
 """
-@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+@copyright: 2007-2015 Quotemaster cc. See LICENSE for details.
 
 Interface definitions for Entropy.
 """
@@ -25,10 +25,24 @@ class IContentObject(Interface):
         """
 
 
-
-class IContentStore(Interface):
+class IReadStore(Interface):
     """
-    Interface for storing and retrieving immutable content objects.
+    An object store which can be read from.
+    """
+    def getObject(objectID):
+        """
+        Retrieve an object.
+
+        @param objectId: the object identifier.
+        @type objectId: C{unicode}
+        @returns: the content object.
+        @rtype: C{Deferred<IContentObject>}
+        """
+
+
+class IWriteStore(Interface):
+    """
+    An object store which can be written to.
     """
     def storeObject(content, contentType, metadata={}, created=None):
         """
@@ -51,17 +65,25 @@ class IContentStore(Interface):
         """
 
 
-    def getObject(objectID):
-        """
-        Retrieve an object.
+class IDeferredWriteStore(IWriteStore):
+    """
+    An object store which can be written to.
 
-        @param objectId: the object identifier.
-        @type objectId: C{unicode}
-        @returns: the content object.
-        @rtype: C{Deferred<IContentObject>}
-        """
+    This is an alias for L{IWriteStore}; when used as part of a storage
+    configuration, the use of this interface indicates that writes to this
+    backend are deferred, rather than being required to complete before the
+    frontend operation completes.
+    """
 
 
+
+class IContentStore(IReadStore, IWriteStore):
+    """
+    Interface for storing and retrieving immutable content objects.
+
+    This interface is deprecated; L{IReadStore} and L{IWriteStore} should be
+    used directly instead.
+    """
     def migrateTo(destination):
         """
         Initiate a migration to another content store.
@@ -87,16 +109,16 @@ class IContentStore(Interface):
 
 
 
-class ISiblingStore(IContentStore):
+class ISiblingStore(IReadStore):
     """
-    Sibling content store.
+    Deprecated alias for L{IReadStore}.
     """
 
 
 
-class IBackendStore(IContentStore):
+class IBackendStore(IDeferredWriteStore):
     """
-    Backend content store.
+    Deprecated alias for L{IDeferredWriteStore}.
     """
 
 
