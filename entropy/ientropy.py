@@ -116,7 +116,7 @@ class ISiblingStore(IReadStore):
 
 
 
-class IBackendStore(IDeferredWriteStore):
+class IBackendStore(IReadStore, IDeferredWriteStore):
     """
     Deprecated alias for L{IDeferredWriteStore}.
     """
