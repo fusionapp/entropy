@@ -49,3 +49,22 @@ class MemoryObject(record('content hash contentDigest contentType created '
 
     def getContent(self):
         return self.content
+
+
+def firstSuccess(operation, targets, exceptionType, *args):
+    """
+    Try an operation on several targets, returning the first successful result.
+    """
+    def tryOne():
+        try:
+            target = it.next()
+        except StopIteration:
+            raise exceptionType(*args)
+        return operation(target, *args).addErrback(eb)
+
+    def eb(f):
+        f.trap(exceptionType)
+        return tryOne()
+
+    it = iter(targets)
+    return tryOne()

@@ -16,7 +16,7 @@ from twisted.application.service import IService
 from twisted.web import http
 
 from axiom.store import Store
-from axiom.item import Item
+from axiom.item import Item, POWERUP_BEFORE
 from axiom.attributes import inmemory, integer
 from axiom.errors import ItemNotFound
 from axiom.dependency import installOn
@@ -26,15 +26,25 @@ from nevow.testutil import FakeRequest
 from nevow.static import File
 
 from entropy.ientropy import (
-    IContentStore, ISiblingStore, IBackendStore, IUploadScheduler, IMigration)
+    IContentStore, IReadStore, IWriteStore, IDeferredWriteStore,
+    IUploadScheduler, IMigration)
 from entropy.errors import CorruptObject, NonexistentObject
 from entropy.store import (
-    ContentStore, ImmutableObject, ObjectCreator, _PendingUpload,
-    MigrationManager, LocalStoreMigration, PendingMigration,
-    RemoteEntropyStore)
+    StorageConfiguration, ImmutableObject, ObjectCreator, _PendingUpload,
+    MigrationManager, RemoteEntropyStore)
+from entropy.backends.localaxiom import (
+    AxiomStore, LocalStoreMigration, PendingMigration)
 from entropy.util import MemoryObject
 from entropy.test.util import DummyAgent
 from entropy.client import Endpoint
+
+
+def configurationWithLocal(store):
+    storage = StorageConfiguration(store=store)
+    backend = AxiomStore(store=store)
+    storage.powerUp(backend, IReadStore, POWERUP_BEFORE)
+    storage.powerUp(backend, IWriteStore)
+    return storage
 
 
 
@@ -71,13 +81,13 @@ class RemoteEntropyStoreTests(TestCase):
 
 
 
-class ContentStoreTests(TestCase):
+class AxiomStoreTests(TestCase):
     """
-    Tests for L{ContentStore}.
+    Tests for L{AxiomStore}.
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+        self.contentStore = AxiomStore(store=self.store, hash=u'sha256')
 
 
     def test_storeObject(self):
@@ -126,37 +136,21 @@ class ContentStoreTests(TestCase):
         """
         t1 = Time()
         t2 = t1 - timedelta(seconds=30)
-        obj = self.contentStore._storeObject('blah',
+        obj = self.contentStore._storeObject(None,
+                                             'blah',
                                              u'application/octet-stream',
                                              created=t1)
-        obj2 = self.contentStore._storeObject('blah',
+        obj2 = self.contentStore._storeObject(None,
+                                              'blah',
                                               u'text/plain',
                                               created=t2)
         self.assertIdentical(obj, obj2)
         self.assertEquals(obj.contentType, u'text/plain')
         self.assertEquals(obj.created, t2)
 
-        self.contentStore._storeObject('blah', u'text/plain')
+        self.contentStore._storeObject(None, 'blah', u'text/plain')
 
         self.assertTrue(obj.created > t2)
-
-
-    def test_importObject(self):
-        """
-        Importing an object stores an equivalent object in the local store.
-        """
-        created = Time()
-
-        obj1 = MemoryObject(hash=u'sha256',
-                            contentDigest=u'9aef0e119873bb0aab04e941d8f76daf21dedcd79e2024004766ee3b22ca9862',
-                            content=u'blahblah some data blahblah',
-                            created=created,
-                            contentType=u'application/octet-stream')
-        obj2 = self.contentStore.importObject(obj1)
-        self.assertEquals(obj1.objectId, obj2.objectId)
-        self.assertEquals(obj1.created, obj2.created)
-        self.assertEquals(obj1.contentType, obj2.contentType)
-        self.assertEquals(obj1.getContent(), obj2.getContent())
 
 
     def test_nonexistentObject(self):
@@ -176,7 +170,7 @@ class MigrationTests(TestCase):
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+        self.contentStore = AxiomStore(store=self.store, hash=u'sha256')
         self.mockStore = MockContentStore(store=self.store)
 
 
@@ -198,7 +192,7 @@ class MigrationTests(TestCase):
         """
         objs = [self._mkObject() for _ in xrange(5)]
 
-        dest = ContentStore(store=self.store, hash=u'sha256')
+        dest = AxiomStore(store=self.store, hash=u'sha256')
         migration = self.contentStore.migrateTo(dest)
         self.assertIdentical(migration.source, self.contentStore)
         self.assertIdentical(migration.destination, dest)
@@ -213,6 +207,7 @@ class MigrationTests(TestCase):
         """
         def _mkObject(content):
             return self.contentStore._storeObject(
+                objectId=None,
                 content=content,
                 contentType=u'application/octet-stream')
 
@@ -266,6 +261,7 @@ class MigrationTests(TestCase):
         Set up some test state for migrations.
         """
         obj = self.contentStore._storeObject(
+            objectId=None,
             content='foo',
             contentType=u'application/octet-stream')
         migration = LocalStoreMigration(
@@ -379,24 +375,12 @@ class StoreBackendTests(TestCase):
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore1 = ContentStore(store=self.store)
+        self.contentStore1 = configurationWithLocal(store=self.store)
         self.contentStore1.storeObject(content='somecontent',
                                        contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
 
-        self.contentStore2 = ContentStore(store=self.store)
-
-
-    def test_getSiblingExists(self):
-        """
-        Calling getSiblingObject with an object ID that is present in the local
-        store just returns the local object.
-        """
-        d = self.contentStore1.getSiblingObject(self.testObject.objectId)
-        def _cb(o):
-            self.o = o
-        d.addCallback(_cb)
-        self.assertIdentical(self.o, self.testObject)
+        self.contentStore2 = StorageConfiguration(store=self.store)
 
 
     def _retrievalTest(self):
@@ -413,70 +397,18 @@ class StoreBackendTests(TestCase):
         self.assertIdentical(self.o, self.o2)
 
 
-    def test_getSiblingExistsRemote(self):
-        """
-        Calling getSiblingObject with an object ID that is missing locally, but
-        present in one of the sibling stores, will retrieve the object, as well
-        as inserting it into the local store.
-        """
-        self.store.powerUp(self.contentStore1, ISiblingStore)
-        self._retrievalTest()
-
-
-    def test_getSiblingExistsBackend(self):
-        """
-        If an object is missing in local and sibling stores, but present in a
-        backend store, the object will be retrieved from the backend store.
-        """
-        self.store.powerUp(self.contentStore1, IBackendStore)
-        self._retrievalTest()
-
-
-    def test_siblingBeforeBackend(self):
-        """
-        When looking for a missing object, sibling stores are tried before
-        backend stores.
-        """
-        events = []
-
-        siblingStore = MockContentStore(store=self.store, events=events)
-        self.store.powerUp(siblingStore, ISiblingStore)
-
-        backendStore = MockContentStore(store=self.store, events=events)
-        self.store.powerUp(backendStore, IBackendStore)
-
-        def _cb(e):
-            self.assertEquals(
-                events,
-                [('getObject', siblingStore, u'sha256:aoeuaoeu'),
-                 ('getObject', backendStore, u'sha256:aoeuaoeu')])
-        return self.assertFailure(
-            self.contentStore2.getSiblingObject(u'sha256:aoeuaoeu'),
-            NonexistentObject).addCallback(_cb)
-
-
-    def test_getSiblingMissing(self):
-        """
-        Calling getSiblingObject with an object ID that is missing everywhere
-        raises L{NonexistentObject}.
-        """
-        self.store.powerUp(self.contentStore1, ISiblingStore)
-        objectId = u'sha256:NOSUCHOBJECT'
-        d = self.contentStore2.getSiblingObject(objectId)
-        return self.assertFailure(d, NonexistentObject
-            ).addCallback(lambda e: self.assertEquals(e.objectId, objectId))
-
-
     def test_storeObject(self):
         """
         Storing an object also causes it to be scheduled for storing in all
         backend stores.
         """
-        contentStore = ContentStore(store=self.store)
+        contentStore = configurationWithLocal(store=self.store)
         backendStore = MockContentStore(store=self.store)
-        self.store.powerUp(backendStore, IBackendStore)
+        contentStore.powerUp(backendStore, IReadStore)
+        contentStore.powerUp(backendStore, IDeferredWriteStore)
         backendStore2 = MockContentStore(store=self.store)
-        self.store.powerUp(backendStore2, IBackendStore)
+        contentStore.powerUp(backendStore2, IReadStore)
+        contentStore.powerUp(backendStore2, IDeferredWriteStore)
         scheduler = MockUploadScheduler()
         self.store.inMemoryPowerUp(scheduler, IUploadScheduler)
 
@@ -507,7 +439,7 @@ class _PendingUploadTests(TestCase):
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store)
+        self.contentStore = configurationWithLocal(store=self.store)
         self.store.powerUp(self.contentStore, IContentStore)
         self.contentStore.storeObject(content='somecontent',
                                       contentType=u'application/octet-stream')
@@ -574,7 +506,7 @@ class ObjectCreatorTests(TestCase):
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+        self.contentStore = configurationWithLocal(store=self.store)
         self.creator = ObjectCreator(self.contentStore)
 
 
@@ -616,7 +548,7 @@ class ImmutableObjectTests(TestCase):
     """
     def setUp(self):
         self.store = Store(self.mktemp())
-        self.contentStore = ContentStore(store=self.store)
+        self.contentStore = AxiomStore(store=self.store)
         self.contentStore.storeObject(content='somecontent',
                                       contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)

@@ -87,6 +87,7 @@ class AxiomStore(Item):
     implements(IReadStore, IWriteStore)
     hash = text(allowNone=False, default=u'sha256')
 
+
     @transacted
     def _storeObject(self, objectId, content, contentType, metadata={}, created=None):
         """
@@ -98,7 +99,7 @@ class AxiomStore(Item):
         contentDigest = getHash(self.hash)(content).hexdigest()
         contentDigest = unicode(contentDigest, 'ascii')
         calculatedId = u'%s:%s' % (self.hash, contentDigest)
-        if objectId != calculatedId:
+        if objectId is not None and objectId != calculatedId:
             RuntimeError(
                 'Object ID %r does not match calculated ID %r' % (
                     objectId, calculatedId))
@@ -169,10 +170,9 @@ class AxiomStore(Item):
     # IWriteStore
 
     @deferred
-    def storeObject(self, objectId, content, contentType, metadata={}, created=None):
+    def storeObject(self, content, contentType, metadata={}, created=None, objectId=None):
         obj = self._storeObject(objectId, content, contentType, metadata, created)
         return obj.objectId
-
 
 
 

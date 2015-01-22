@@ -38,7 +38,7 @@ from zope.interface import implements
 from epsilon.extime import Time
 
 from axiom.iaxiom import IScheduler
-from axiom.item import Item, transacted, normalize
+from axiom.item import Item, normalize
 from axiom.attributes import (
     text, timestamp, inmemory, reference, integer)
 from axiom.dependency import dependsOn
@@ -46,7 +46,7 @@ from axiom.dependency import dependsOn
 from twisted.web import http
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.internet.defer import succeed, fail
+from twisted.internet.defer import succeed, fail, gatherResults
 from twisted.application.service import Service, IService
 
 from nevow.inevow import IResource, IRequest
@@ -55,12 +55,13 @@ from nevow.rend import NotFound
 
 from entropy.ientropy import (
     IContentStore, IContentObject, IUploadScheduler, IMigrationManager,
-    IMigration, IReadStore)
+    IMigration, IReadStore, IWriteStore, IDeferredWriteStore)
 from entropy.errors import (
     NonexistentObject, DigestMismatch, APIError)
 from entropy.hash import getHash
 from entropy.client import Endpoint
-from entropy.backends.axiomstore import AxiomStore, ImmutableObject
+from entropy.backends.localaxiom import AxiomStore, ImmutableObject
+from entropy.util import firstSuccess
 
 
 
@@ -85,26 +86,56 @@ class StorageConfiguration(Item):
     hash = text(allowNone=False, default=u'sha256')
 
 
-    @transacted
     def getObject(self, objectId):
         """
         Retrieve an object from a backend, if possible.
         """
-        backends = iter(list(self.store.powerupsFor(IReadStore)))
+        backends = self.store.transact(
+            lambda: list(self.powerupsFor(IReadStore)))
+        if len(backends) == 0:
+            # XXX: Make this a more specific error
+            raise RuntimeError('No read backends')
 
-        def _eb(f):
-            f.trap(NonexistentObject)
-            try:
-                remoteStore = backends.next()
-            except StopIteration:
-                raise NonexistentObject(objectId)
+        return firstSuccess(
+            lambda s, oid: s.getObject(oid),
+            backends,
+            NonexistentObject,
+            objectId)
 
-            d = remoteStore.getObject(objectId)
-            d.addCallbacks(self.importObject, _eb)
-            return d
 
-        return self.getObject(objectId).addErrback(_eb)
+    def storeObject(self, content, contentType, objectId=None):
+        """
+        Store an object in all applicable backends.
+        """
+        def getBackends():
+            return (
+                list(self.powerupsFor(IWriteStore)),
+                list(self.powerupsFor(IDeferredWriteStore)),
+                IUploadScheduler(self.store, None))
 
+        def scheduleUploads():
+            for backend in deferredBackends:
+                scheduler.scheduleUpload(objectId, backend)
+            return objectId
+
+        backends, deferredBackends, scheduler = self.store.transact(getBackends)
+        if len(backends) == 0:
+            # XXX: Make this a more specific error
+            raise RuntimeError('No write backends')
+        if len(deferredBackends) > 0 and scheduler is None:
+            # XXX: More specific error
+            raise RuntimeError('Deferred write backends but no scheduler')
+
+        if objectId is None:
+            digest = unicode(getHash(self.hash)(content).hexdigest(), 'ascii')
+            objectId = u'%s:%s' % (self.hash, digest)
+
+        d = gatherResults(
+            [b.storeObject(content=content, contentType=contentType, objectId=objectId)
+             for b in backends],
+            consumeErrors=True)
+        d.addCallback(lambda _: self.store.transact(scheduleUploads))
+        return d
 
 
 class ObjectCreator(object):
@@ -151,7 +182,7 @@ class ObjectCreator(object):
             objectId = objectId.encode('ascii')
             return objectId
 
-        d = self.storage.storeObject(data, contentType)
+        d = self.storage.storeObject(data, contentType, None)
         return d.addCallback(_cb)
 
 
