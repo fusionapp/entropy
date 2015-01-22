@@ -1,0 +1,6 @@
+- Replace deleted getSiblingObject tests; this functionality is basically
+  replaced by ordering of backend powerups.
+- Write upgraders to transition from the old deprecated powerups and powerup
+  location (previously they were installed on the store, now they should be
+  installed on the StorageConfiguration to eventually allow for more than one
+  configuration), and tests for the upgraders.
