@@ -27,6 +27,13 @@ class NonexistentObject(ValueError):
         self.objectId = objectId
 
 
+class NoWriteBackends(Exception):
+    """
+    There are no L{entropy.ientropy.IWriteStore} backends configured, but at
+    least one is required for the requested operation.
+    """
+
+
 
 class DigestMismatch(ValueError):
     """

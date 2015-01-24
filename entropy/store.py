@@ -57,11 +57,11 @@ from entropy.ientropy import (
     IContentStore, IContentObject, IUploadScheduler, IMigrationManager,
     IMigration, IReadStore, IWriteStore, IDeferredWriteStore)
 from entropy.errors import (
-    NonexistentObject, DigestMismatch, APIError)
+    NonexistentObject, DigestMismatch, APIError, NoWriteBackends)
 from entropy.hash import getHash
 from entropy.client import Endpoint
-from entropy.backends.localaxiom import AxiomStore, ImmutableObject
 from entropy.util import firstSuccess
+from entropy.backends.localaxiom import AxiomStore, ImmutableObject
 
 
 
@@ -90,8 +90,7 @@ class StorageConfiguration(Item):
         """
         Retrieve an object from a backend, if possible.
         """
-        backends = self.store.transact(
-            lambda: list(self.powerupsFor(IReadStore)))
+        backends = list(self.powerupsFor(IReadStore))
         if len(backends) == 0:
             # XXX: Make this a more specific error
             raise RuntimeError('No read backends')
@@ -107,21 +106,16 @@ class StorageConfiguration(Item):
         """
         Store an object in all applicable backends.
         """
-        def getBackends():
-            return (
-                list(self.powerupsFor(IWriteStore)),
-                list(self.powerupsFor(IDeferredWriteStore)),
-                IUploadScheduler(self.store, None))
-
         def scheduleUploads():
             for backend in deferredBackends:
                 scheduler.scheduleUpload(objectId, backend)
             return objectId
 
-        backends, deferredBackends, scheduler = self.store.transact(getBackends)
+        backends = list(self.powerupsFor(IWriteStore))
+        deferredBackends = list(self.powerupsFor(IDeferredWriteStore))
+        scheduler = IUploadScheduler(self.store, None)
         if len(backends) == 0:
-            # XXX: Make this a more specific error
-            raise RuntimeError('No write backends')
+            raise NoWriteBackends()
         if len(deferredBackends) > 0 and scheduler is None:
             # XXX: More specific error
             raise RuntimeError('Deferred write backends but no scheduler')
@@ -182,7 +176,8 @@ class ObjectCreator(object):
             objectId = objectId.encode('ascii')
             return objectId
 
-        d = self.storage.storeObject(data, contentType, None)
+        d = self.storage.store.transact(
+            self.storage.storeObject, data, contentType, None)
         return d.addCallback(_cb)
 
 
@@ -203,7 +198,8 @@ class ContentResource(Item):
         def _notFound(f):
             f.trap(NonexistentObject)
             return None
-        return self.contentStore.getSiblingObject(name).addErrback(_notFound)
+        return self.store.transact(
+            self.contentStore.getObject, name).addErrback(_notFound)
 
 
     def childFactory(self, name):

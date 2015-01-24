@@ -7,7 +7,6 @@ from StringIO import StringIO
 from datetime import timedelta
 
 from epsilon.extime import Time
-from epsilon.structlike import record
 
 from zope.interface import implements
 
@@ -29,7 +28,7 @@ from nevow.static import File
 from entropy.ientropy import (
     IContentStore, IReadStore, IWriteStore, IDeferredWriteStore,
     IUploadScheduler, IMigration)
-from entropy.errors import CorruptObject, NonexistentObject
+from entropy.errors import CorruptObject, NonexistentObject, NoWriteBackends
 from entropy.store import (
     StorageConfiguration, ImmutableObject, ObjectCreator, _PendingUpload,
     MigrationManager, RemoteEntropyStore)
@@ -424,9 +423,10 @@ class StoreBackendTests(TestCase):
         backend2 = MemoryStore(store=store)
         storage.powerUp(backend2, IWriteStore)
 
-        storage.storeObject(objectId=u'oid',
-                            content='somecontent',
-                            contentType=u'application/octet-stream')
+        storage.storeObject(
+            objectId=u'oid',
+            content='somecontent',
+            contentType=u'application/octet-stream')
         obj = MemoryObject(
             objectId=u'oid', content='somecontent',
             contentType=u'application/octet-stream', created=None, metadata={})
@@ -434,6 +434,20 @@ class StoreBackendTests(TestCase):
             obj, self.successResultOf(backend1.getObject(u'oid')))
         self.assertEquals(
             obj, self.successResultOf(backend2.getObject(u'oid')))
+
+
+    def test_storeObjectNoBackends(self):
+        """
+        Trying to store an object in a configuration with no write backends
+        results in a L{entropy.errors.NoWriteBackends}.
+        """
+        storage = StorageConfiguration()
+        self.assertRaises(
+            NoWriteBackends,
+            storage.storeObject,
+            objectId=u'oid',
+            content='somecontent',
+            contentType=u'application/octet-stream')
 
 
     def test_storeObjectFailure(self):
