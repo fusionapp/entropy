@@ -427,12 +427,13 @@ class StoreBackendTests(TestCase):
         storage.storeObject(objectId=u'oid',
                             content='somecontent',
                             contentType=u'application/octet-stream')
+        obj = MemoryObject(
+            objectId=u'oid', content='somecontent',
+            contentType=u'application/octet-stream', created=None, metadata={})
         self.assertEquals(
-            MemoryObject(
-                objectId=u'oid', content='somecontent',
-                contentType=u'application/octet-stream', created=None,
-                metadata={}),
-            self.successResultOf(backend1.getObject(u'oid')))
+            obj, self.successResultOf(backend1.getObject(u'oid')))
+        self.assertEquals(
+            obj, self.successResultOf(backend2.getObject(u'oid')))
 
 
     def test_storeObjectFailure(self):
