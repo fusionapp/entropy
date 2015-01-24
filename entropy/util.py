@@ -3,7 +3,7 @@
 """
 from zope.interface import implements
 
-from epsilon.structlike import record
+from characteristic import attributes, Attribute
 
 from twisted.internet import defer
 from twisted.python.util import mergeFunctionMetadata
@@ -31,8 +31,10 @@ def deferred(f):
 
 
 
-class MemoryObject(record('objectId content contentType created metadata',
-                          metadata={})):
+@attributes(['objectId', 'content', 'contentType', 'created',
+             Attribute('metadata', default_factory=dict)],
+            apply_immutable=True)
+class MemoryObject(object):
     """
     In-memory implementation of L{IContentObject}.
 
