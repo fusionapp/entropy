@@ -33,35 +33,30 @@ point in time.
 import hashlib
 from datetime import timedelta
 
-from zope.interface import implements
-
-from epsilon.extime import Time
-
+from axiom.attributes import inmemory, integer, reference, text, timestamp
+from axiom.dependency import dependsOn
 from axiom.iaxiom import IScheduler
 from axiom.item import Item, normalize
-from axiom.attributes import (
-    text, timestamp, inmemory, reference, integer)
-from axiom.dependency import dependsOn
-
-from twisted.web import http
+from epsilon.extime import Time
+from nevow.inevow import IRequest, IResource
+from nevow.rend import NotFound
+from nevow.static import Data
+from twisted.application.service import IService, Service
+from twisted.internet.defer import fail, gatherResults, succeed
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.internet.defer import succeed, fail, gatherResults
-from twisted.application.service import Service, IService
+from twisted.web import http
+from zope.interface import implements
 
-from nevow.inevow import IResource, IRequest
-from nevow.static import Data
-from nevow.rend import NotFound
-
-from entropy.ientropy import (
-    IContentStore, IContentObject, IUploadScheduler, IMigrationManager,
-    IMigration, IReadStore, IWriteStore, IDeferredWriteStore)
-from entropy.errors import (
-    NonexistentObject, DigestMismatch, APIError, NoWriteBackends)
-from entropy.hash import getHash
-from entropy.client import Endpoint
-from entropy.util import firstSuccess
 from entropy.backends.localaxiom import AxiomStore, ImmutableObject
+from entropy.client import Endpoint
+from entropy.errors import (
+    APIError, DigestMismatch, NonexistentObject, NoWriteBackends)
+from entropy.hash import getHash
+from entropy.ientropy import (
+    IContentObject, IContentStore, IDeferredWriteStore, IMigration,
+    IMigrationManager, IReadStore, IUploadScheduler, IWriteStore)
+from entropy.util import firstSuccess
 
 
 
