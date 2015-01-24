@@ -58,13 +58,11 @@ class S3Store(Item):
 
 
     def getObject(self, objectId):
-        hash, contentDigest = objectId.split(u':', 1)
         def _makeObject(content):
             headers = query.get_response_headers()
             return MemoryObject(
+                objectId=objectId,
                 content=content,
-                hash=hash,
-                contentDigest=contentDigest,
                 contentType=unicode(headers['content-type'][0], 'utf-8'),
                 created=None)
 

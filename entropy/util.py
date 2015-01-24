@@ -31,8 +31,8 @@ def deferred(f):
 
 
 
-class MemoryObject(record('content hash contentDigest contentType created '
-                          'metadata', metadata={})):
+class MemoryObject(record('objectId content contentType created metadata',
+                          metadata={})):
     """
     In-memory implementation of L{IContentObject}.
 
@@ -42,13 +42,9 @@ class MemoryObject(record('content hash contentDigest contentType created '
     implements(IContentObject)
 
 
-    @property
-    def objectId(self):
-        return u'%s:%s' % (self.hash, self.contentDigest)
-
-
     def getContent(self):
         return self.content
+
 
 
 def firstSuccess(operation, targets, exceptionType, *args):

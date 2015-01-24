@@ -7,6 +7,7 @@ from StringIO import StringIO
 from datetime import timedelta
 
 from epsilon.extime import Time
+from epsilon.structlike import record
 
 from zope.interface import implements
 
@@ -354,6 +355,44 @@ class MockContentStore(Item):
 
 
 
+class MemoryStore(Item):
+    """
+    In-memory backend.
+
+    This is an Item because it needs to be installed as a powerup on
+    L{axiom.store.StorageConfiguration}, and installing more than one in-memory
+    powerup for an interface is not currently supported by Axiom.
+    """
+    implements(IReadStore, IWriteStore)
+
+    dummy = integer()
+    objects = inmemory()
+
+    def __init__(self, *a, **kw):
+        super(MemoryStore, self).__init__(*a, **kw)
+        if getattr(self, 'objects', None) is None:
+            self.objects = {}
+
+    # IReadStore
+
+    def getObject(self, objectId):
+        try:
+            return succeed(self.objects[objectId])
+        except KeyError:
+            return fail(NonexistentObject(objectId))
+
+    # IWriteStore
+
+    def storeObject(self, content, contentType, metadata={}, created=None, objectId=None):
+        if objectId is None:
+            raise ValueError('Must provide objectId')
+        self.objects[objectId] = MemoryObject(
+            content=content, contentType=contentType, metadata=metadata,
+            created=created, objectId=objectId)
+        return succeed(objectId)
+
+
+
 class MockUploadScheduler(object):
     """
     Mock implementation of L{IUploadScheduler}.
@@ -373,48 +412,54 @@ class StoreBackendTests(TestCase):
     """
     Tests for content store backend functionality.
     """
-    def setUp(self):
-        self.store = Store(self.mktemp())
-        self.contentStore1 = configurationWithLocal(store=self.store)
-        self.contentStore1.storeObject(content='somecontent',
-                                       contentType=u'application/octet-stream')
-        self.testObject = self.store.findUnique(ImmutableObject)
-
-        self.contentStore2 = StorageConfiguration(store=self.store)
-
-
-    def _retrievalTest(self):
-        d = self.contentStore2.getSiblingObject(self.testObject.objectId)
-        def _cb(o):
-            self.o = o
-        d.addCallback(_cb)
-
-        self.assertEquals(self.o.getContent(), 'somecontent')
-        d = self.contentStore2.getObject(self.testObject.objectId)
-        def _cb2(o2):
-            self.o2 = o2
-        d.addCallback(_cb2)
-        self.assertIdentical(self.o, self.o2)
-
-
-    def test_storeObject(self):
+    def test_storeObjectImmediate(self):
         """
-        Storing an object also causes it to be scheduled for storing in all
-        backend stores.
+        When an object is stored in a storage configuration, it is stored in
+        all write backends.
         """
-        contentStore = configurationWithLocal(store=self.store)
-        backendStore = MockContentStore(store=self.store)
-        contentStore.powerUp(backendStore, IReadStore)
-        contentStore.powerUp(backendStore, IDeferredWriteStore)
-        backendStore2 = MockContentStore(store=self.store)
-        contentStore.powerUp(backendStore2, IReadStore)
-        contentStore.powerUp(backendStore2, IDeferredWriteStore)
+        store = Store()
+        storage = StorageConfiguration(store=store)
+        backend1 = MemoryStore(store=store)
+        storage.powerUp(backend1, IWriteStore)
+        backend2 = MemoryStore(store=store)
+        storage.powerUp(backend2, IWriteStore)
+
+        storage.storeObject(objectId=u'oid',
+                            content='somecontent',
+                            contentType=u'application/octet-stream')
+        self.assertEquals(
+            MemoryObject(
+                objectId=u'oid', content='somecontent',
+                contentType=u'application/octet-stream', created=None,
+                metadata={}),
+            self.successResultOf(backend1.getObject(u'oid')))
+
+
+    def test_storeObjectFailure(self):
+        """
+        When storing an object in any write backend fails, the entire operation
+        fails.
+        """
+        # XXX: write this test!
+
+
+    def test_storeObjectDeferred(self):
+        """
+        Storing an object causes it to be scheduled for upload to all deferred
+        write backends.
+        """
+        store = Store(filesdir=self.mktemp())
+        storage = configurationWithLocal(store=store)
+        backendStore = MemoryStore(store=store)
+        storage.powerUp(backendStore, IDeferredWriteStore)
+        backendStore2 = MemoryStore(store=store)
+        storage.powerUp(backendStore2, IDeferredWriteStore)
         scheduler = MockUploadScheduler()
-        self.store.inMemoryPowerUp(scheduler, IUploadScheduler)
+        store.inMemoryPowerUp(scheduler, IUploadScheduler)
 
-        contentStore.storeObject(content='somecontent',
-                                 contentType=u'application/octet-stream')
-        testObject = self.store.findUnique(ImmutableObject)
+        storage.storeObject(content='somecontent',
+                            contentType=u'application/octet-stream')
+        testObject = store.findUnique(ImmutableObject)
         pu = scheduler.uploads
         self.assertEquals(len(pu), 2)
         self.assertEquals(pu[0][0], testObject.objectId)

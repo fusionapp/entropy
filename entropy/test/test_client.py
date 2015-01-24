@@ -105,9 +105,8 @@ class EndpointTests(TestCase):
         response.respond('some_data')
         obj = self.successResultOf(d)
         self.assertEqual(
-            ('some_data', u'sha256', u'an_id', u'applicaton/pdf', {}),
-            (obj.content, obj.hash, obj.contentDigest, obj.contentType,
-             obj.metadata))
+            (u'sha256:an_id', 'some_data', u'applicaton/pdf', {}),
+            (obj.objectId, obj.content, obj.contentType, obj.metadata))
 
 
     def test_exists(self):
