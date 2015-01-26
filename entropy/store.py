@@ -42,7 +42,7 @@ from nevow.inevow import IRequest, IResource
 from nevow.rend import NotFound
 from nevow.static import Data
 from twisted.application.service import IService, Service
-from twisted.internet.defer import fail, gatherResults, succeed
+from twisted.internet.defer import fail, gatherResults, succeed, FirstError
 from twisted.python import log
 from twisted.python.components import registerAdapter
 from twisted.web import http
@@ -51,7 +51,8 @@ from zope.interface import implements
 from entropy.backends.localaxiom import AxiomStore, ImmutableObject
 from entropy.client import Endpoint
 from entropy.errors import (
-    APIError, DigestMismatch, NonexistentObject, NoWriteBackends)
+    APIError, DigestMismatch, NonexistentObject, NoWriteBackends,
+    NoReadBackends)
 from entropy.hash import getHash
 from entropy.ientropy import (
     IContentObject, IContentStore, IDeferredWriteStore, IMigration,
@@ -87,8 +88,7 @@ class StorageConfiguration(Item):
         """
         backends = list(self.powerupsFor(IReadStore))
         if len(backends) == 0:
-            # XXX: Make this a more specific error
-            raise RuntimeError('No read backends')
+            raise NoReadBackends()
 
         return firstSuccess(
             lambda s, oid: s.getObject(oid),
@@ -105,6 +105,10 @@ class StorageConfiguration(Item):
             for backend in deferredBackends:
                 scheduler.scheduleUpload(objectId, backend)
             return objectId
+
+        def eb(f):
+            f.trap(FirstError)
+            return f.value.subFailure
 
         backends = list(self.powerupsFor(IWriteStore))
         deferredBackends = list(self.powerupsFor(IDeferredWriteStore))
@@ -123,6 +127,7 @@ class StorageConfiguration(Item):
             [b.storeObject(content=content, contentType=contentType, objectId=objectId)
              for b in backends],
             consumeErrors=True)
+        d.addErrback(eb)
         d.addCallback(lambda _: self.store.transact(scheduleUploads))
         return d
 

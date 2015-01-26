@@ -27,6 +27,15 @@ class NonexistentObject(ValueError):
         self.objectId = objectId
 
 
+
+class NoReadBackends(Exception):
+    """
+    There are no L{entropy.ientropy.IReadStore} backends configured, but at
+    least one is required for the requested operation.
+    """
+
+
+
 class NoWriteBackends(Exception):
     """
     There are no L{entropy.ientropy.IWriteStore} backends configured, but at

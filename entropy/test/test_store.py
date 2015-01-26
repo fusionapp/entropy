@@ -16,7 +16,7 @@ from twisted.application.service import IService
 from twisted.web import http
 
 from axiom.store import Store
-from axiom.item import Item, POWERUP_BEFORE
+from axiom.item import Item, POWERUP_BEFORE, POWERUP_AFTER
 from axiom.attributes import inmemory, integer
 from axiom.errors import ItemNotFound
 from axiom.dependency import installOn
@@ -28,7 +28,8 @@ from nevow.static import File
 from entropy.ientropy import (
     IContentStore, IReadStore, IWriteStore, IDeferredWriteStore,
     IUploadScheduler, IMigration)
-from entropy.errors import CorruptObject, NonexistentObject, NoWriteBackends
+from entropy.errors import (
+    CorruptObject, NonexistentObject, NoWriteBackends, NoReadBackends)
 from entropy.store import (
     StorageConfiguration, ImmutableObject, ObjectCreator, _PendingUpload,
     MigrationManager, RemoteEntropyStore)
@@ -392,6 +393,27 @@ class MemoryStore(Item):
 
 
 
+class IAmErrorStore(Item):
+    """
+    Backend that always fails on all operations.
+    """
+    implements(IReadStore, IWriteStore)
+
+    dummy = integer()
+
+    # IReadStore
+
+    def getObject(self, objectId):
+        return fail(RuntimeError())
+
+
+    # IWriteStore
+
+    def storeObject(self, content, contentType, metadata={}, created=None, objectId=None):
+        return fail(RuntimeError())
+
+
+
 class MockUploadScheduler(object):
     """
     Mock implementation of L{IUploadScheduler}.
@@ -411,6 +433,50 @@ class StoreBackendTests(TestCase):
     """
     Tests for content store backend functionality.
     """
+    def test_getObject(self):
+        """
+        Retrieving an object that exists in any read backend returns the object
+        from the first backend it is found in. The backends are tried in order
+        of Axiom powerup priority.
+        """
+        store = Store()
+        storage = StorageConfiguration(store=store)
+        backend1 = MemoryStore(store=store)
+        storage.powerUp(backend1, IReadStore, POWERUP_BEFORE)
+        obj2 = MemoryObject(
+            objectId=u'oid', content='somecontent',
+            contentType=u'application/octet-stream', created=1, metadata={})
+        backend2 = MemoryStore(store=store, objects={u'oid': obj2})
+        storage.powerUp(backend2, IReadStore)
+        obj3 = MemoryObject(
+            objectId=u'oid', content='somecontent',
+            contentType=u'application/octet-stream', created=2, metadata={})
+        backend3 = MemoryStore(store=store, objects={u'oid': obj3})
+        storage.powerUp(backend3, IReadStore, POWERUP_AFTER)
+        self.assertEquals(obj2, self.successResultOf(storage.getObject(u'oid')))
+
+
+    def test_getObjectNoBackends(self):
+        """
+        Trying to retrieve an object in a configuration with no read backends
+        results in a L{entropy.errors.NoReadBackends} exception.
+        """
+        storage = StorageConfiguration()
+        self.assertRaises(NoReadBackends, storage.getObject, u'id')
+
+
+    def test_getObjectNotFound(self):
+        """
+        Trying to retrieve an object that is not found in any read backend
+        results in a L{entropy.errors.NonexistentObject} failure.
+        """
+        store = Store()
+        storage = StorageConfiguration(store=store)
+        backend = MemoryStore(store=store)
+        storage.powerUp(backend, IReadStore)
+        self.failureResultOf(storage.getObject(u'oid'), NonexistentObject)
+
+
     def test_storeObjectImmediate(self):
         """
         When an object is stored in a storage configuration, it is stored in
@@ -439,7 +505,7 @@ class StoreBackendTests(TestCase):
     def test_storeObjectNoBackends(self):
         """
         Trying to store an object in a configuration with no write backends
-        results in a L{entropy.errors.NoWriteBackends}.
+        results in a L{entropy.errors.NoWriteBackends} exception.
         """
         storage = StorageConfiguration()
         self.assertRaises(
@@ -453,9 +519,24 @@ class StoreBackendTests(TestCase):
     def test_storeObjectFailure(self):
         """
         When storing an object in any write backend fails, the entire operation
-        fails.
+        fails, but the object is still stored in any backends that succeed.
         """
-        # XXX: write this test!
+        store = Store()
+        storage = StorageConfiguration(store=store)
+        workingBackend = MemoryStore(store=store)
+        storage.powerUp(workingBackend, IWriteStore)
+        brokenBackend = IAmErrorStore(store=store)
+        storage.powerUp(brokenBackend, IWriteStore)
+        d = storage.storeObject(
+            objectId=u'oid',
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        self.failureResultOf(d, RuntimeError)
+        self.assertEquals(
+            MemoryObject(
+                objectId=u'oid', content='somecontent',
+                contentType=u'application/octet-stream', created=None, metadata={}),
+            self.successResultOf(workingBackend.getObject(u'oid')))
 
 
     def test_storeObjectDeferred(self):
