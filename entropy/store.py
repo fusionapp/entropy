@@ -250,7 +250,7 @@ class ContentStore(Item):
                 ImmutableObject.contentDigest == contentDigest),
             default=None)
         if obj is None:
-            bucket = contentDigest[:4]
+            bucket = contentDigest[:3]
             contentFile = self.store.newFile(
                 'objects', 'immutable', bucket,
                 '%s:%s' % (self.hash, contentDigest))

@@ -14,7 +14,7 @@ def moveObjects(appStore, start, limit):
             ImmutableObject.storeID >= start,
             limit=limit):
         oldPath = obj.content
-        bucket = obj.contentDigest[:4]
+        bucket = obj.contentDigest[:3]
         newPath = appStore.newFilePath(
             'objects', 'immutable', bucket,
             '%s:%s' % (obj.hash, obj.contentDigest))
