@@ -7,6 +7,7 @@ from entropy.util import getAppStore
 
 def moveObjects(appStore, start, limit):
     obj = None
+    skipped = 0
     for obj in appStore.query(
             ImmutableObject,
             ImmutableObject.storeID >= start,
@@ -16,6 +17,9 @@ def moveObjects(appStore, start, limit):
         newPath = appStore.newFilePath(
             'objects', 'immutable', bucket,
             '%s:%s' % (obj.hash, obj.contentDigest))
+        if oldPath == newPath:
+            skipped += 1
+            continue
         if not newPath.parent().exists():
             newPath.parent().makedirs()
         oldPath.moveTo(newPath)
@@ -24,6 +28,8 @@ def moveObjects(appStore, start, limit):
         print 'No objects selected'
     else:
         print 'Last object seen: %s' % (obj.storeID,)
+    if skipped > 0:
+        print 'Skipped %d objects' % (skipped,)
 
 
 siteStore = Store(argv[1])
