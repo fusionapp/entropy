@@ -5,7 +5,7 @@ from entropy.store import ImmutableObject
 from entropy.util import getAppStore
 
 
-def moveObjects(appStore, start, limit=1000):
+def moveObjects(appStore, start, limit):
     obj = None
     for obj in appStore.query(
             ImmutableObject,
@@ -28,4 +28,5 @@ def moveObjects(appStore, start, limit=1000):
 
 siteStore = Store(argv[1])
 appStore = getAppStore(siteStore)
-appStore.transact(moveObjects, appStore, int(argv[2]))
+limit = int(argv[3])
+appStore.transact(moveObjects, appStore, int(argv[2]), int(argv[3]))
