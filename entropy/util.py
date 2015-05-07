@@ -48,4 +48,4 @@ class MemoryObject(record('content hash contentDigest contentType created '
 
 
     def getContent(self):
-        return self.content
+        return defer.succeed(self.content)

@@ -3,38 +3,33 @@
 
 Tests for L{entropy.store}.
 """
-from StringIO import StringIO
 from datetime import timedelta
+from StringIO import StringIO
 
+from axiom.attributes import inmemory, integer
+from axiom.dependency import installOn
+from axiom.errors import ItemNotFound
+from axiom.item import Item
+from axiom.store import Store
 from epsilon.extime import Time
-
+from nevow.inevow import IResource
+from nevow.static import File
+from nevow.testutil import FakeRequest
+from twisted.application.service import IService
+from twisted.internet.defer import execute, fail, succeed
+from twisted.trial.unittest import TestCase
+from twisted.web import http
 from zope.interface import implements
 
-from twisted.trial.unittest import TestCase
-from twisted.internet.defer import fail, succeed
-from twisted.application.service import IService
-from twisted.web import http
-
-from axiom.store import Store
-from axiom.item import Item
-from axiom.attributes import inmemory, integer
-from axiom.errors import ItemNotFound
-from axiom.dependency import installOn
-
-from nevow.inevow import IResource
-from nevow.testutil import FakeRequest
-from nevow.static import File
-
-from entropy.ientropy import (
-    IContentStore, ISiblingStore, IBackendStore, IUploadScheduler, IMigration)
-from entropy.errors import CorruptObject, NonexistentObject
-from entropy.store import (
-    ContentStore, ImmutableObject, ObjectCreator, _PendingUpload,
-    MigrationManager, LocalStoreMigration, PendingMigration,
-    RemoteEntropyStore)
-from entropy.util import MemoryObject
-from entropy.test.util import DummyAgent
 from entropy.client import Endpoint
+from entropy.errors import CorruptObject, NonexistentObject
+from entropy.ientropy import (
+    IBackendStore, IContentStore, IMigration, ISiblingStore, IUploadScheduler)
+from entropy.store import (
+    ContentStore, ImmutableObject, LocalStoreMigration, MigrationManager,
+    ObjectCreator, PendingMigration, RemoteEntropyStore, _PendingUpload)
+from entropy.test.util import DummyAgent
+from entropy.util import MemoryObject
 
 
 
@@ -78,6 +73,7 @@ class ContentStoreTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+        object.__setattr__(self.contentStore, '_deferToThreadPool', execute)
 
 
     def test_storeObject(self):
@@ -152,11 +148,13 @@ class ContentStoreTests(TestCase):
                             content=u'blahblah some data blahblah',
                             created=created,
                             contentType=u'application/octet-stream')
-        obj2 = self.contentStore.importObject(obj1)
+        obj2 = self.successResultOf(self.contentStore.importObject(obj1))
         self.assertEquals(obj1.objectId, obj2.objectId)
         self.assertEquals(obj1.created, obj2.created)
         self.assertEquals(obj1.contentType, obj2.contentType)
-        self.assertEquals(obj1.getContent(), obj2.getContent())
+        self.assertEquals(
+            self.successResultOf(obj1.getContent()),
+            self.successResultOf(obj2.getContent()))
 
 
     def test_nonexistentObject(self):
@@ -177,6 +175,7 @@ class MigrationTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store, hash=u'sha256')
+        object.__setattr__(self.contentStore, '_deferToThreadPool', execute)
         self.mockStore = MockContentStore(store=self.store)
 
 
@@ -232,10 +231,11 @@ class MigrationTests(TestCase):
         def _verify(ign):
             self.assertEquals(
                 dest.events,
-                [('storeObject', dest, obj1.getContent(), obj1.contentType,
-                  obj1.metadata, obj1.created, obj1.objectId),
-                 ('storeObject', dest, obj2.getContent(), obj2.contentType,
-                  obj2.metadata, obj2.created, obj2.objectId)])
+                [('storeObject', dest, self.successResultOf(obj1.getContent()),
+                  obj1.contentType, obj1.metadata, obj1.created, obj1.objectId),
+                 ('storeObject', dest, self.successResultOf(obj2.getContent()),
+                  obj2.contentType, obj2.metadata, obj2.created,
+                  obj2.objectId)])
         return d.addCallback(_verify)
 
 
@@ -380,11 +380,13 @@ class StoreBackendTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore1 = ContentStore(store=self.store)
+        object.__setattr__(self.contentStore1, '_deferToThreadPool', execute)
         self.contentStore1.storeObject(content='somecontent',
                                        contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
 
         self.contentStore2 = ContentStore(store=self.store)
+        object.__setattr__(self.contentStore2, '_deferToThreadPool', execute)
 
 
     def test_getSiblingExists(self):
@@ -400,17 +402,13 @@ class StoreBackendTests(TestCase):
 
 
     def _retrievalTest(self):
-        d = self.contentStore2.getSiblingObject(self.testObject.objectId)
-        def _cb(o):
-            self.o = o
-        d.addCallback(_cb)
-
-        self.assertEquals(self.o.getContent(), 'somecontent')
-        d = self.contentStore2.getObject(self.testObject.objectId)
-        def _cb2(o2):
-            self.o2 = o2
-        d.addCallback(_cb2)
-        self.assertIdentical(self.o, self.o2)
+        o = self.successResultOf(
+            self.contentStore2.getSiblingObject(self.testObject.objectId))
+        self.assertEquals(
+            self.successResultOf(o.getContent()), 'somecontent')
+        o2 = self.successResultOf(
+            self.contentStore2.getObject(self.testObject.objectId))
+        self.assertIdentical(o, o2)
 
 
     def test_getSiblingExistsRemote(self):
@@ -508,6 +506,7 @@ class _PendingUploadTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store)
+        object.__setattr__(self.contentStore, '_deferToThreadPool', execute)
         self.store.powerUp(self.contentStore, IContentStore)
         self.contentStore.storeObject(content='somecontent',
                                       contentType=u'application/octet-stream')
@@ -555,16 +554,13 @@ class _PendingUploadTests(TestCase):
             return nextScheduled
         object.__setattr__(self.pendingUpload, '_nextAttempt', _nextAttempt)
 
-        def _cb(ign):
-            self.assertIdentical(self.store.findUnique(_PendingUpload),
-                                 self.pendingUpload)
-            self.assertEquals(self.pendingUpload.scheduled,
-                             nextScheduled)
-            errors = self.flushLoggedErrors(ValueError)
-            self.assertEquals(len(errors), 1)
-
-        d = self.pendingUpload.attemptUpload()
-        return self.assertFailure(d, ValueError).addCallback(_cb)
+        self.successResultOf(self.pendingUpload.attemptUpload())
+        self.assertIdentical(self.store.findUnique(_PendingUpload),
+                             self.pendingUpload)
+        self.assertEquals(self.pendingUpload.scheduled,
+                          nextScheduled)
+        errors = self.flushLoggedErrors(ValueError)
+        self.assertEquals(len(errors), 1)
 
 
 
@@ -650,7 +646,8 @@ class ImmutableObjectTests(TestCase):
         """
         L{ImmutableObject.getContent} returns the contents of the object.
         """
-        self.assertEquals(self.testObject.getContent(), 'somecontent')
+        self.assertEquals(
+            self.successResultOf(self.testObject.getContent()), 'somecontent')
 
 
     def test_objectId(self):

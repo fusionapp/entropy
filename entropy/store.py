@@ -20,35 +20,33 @@ import hashlib
 from datetime import timedelta
 from itertools import chain
 
-from zope.interface import implements
-
-from epsilon.extime import Time
-
+from axiom.attributes import (
+    AND, inmemory, integer, path, reference, text, timestamp)
+from axiom.dependency import dependsOn
 from axiom.iaxiom import IScheduler
 from axiom.item import Item, transacted
-from axiom.attributes import (
-    text, path, timestamp, AND, inmemory, reference, integer)
-from axiom.dependency import dependsOn
-
-from twisted.web import http
+from epsilon.extime import Time
+from nevow.inevow import IRequest, IResource
+from nevow.rend import NotFound
+from nevow.static import File
+from twisted.application.service import IService, Service
+from twisted.internet import reactor
+from twisted.internet.defer import execute, fail, gatherResults, succeed
+from twisted.internet.task import cooperate
+from twisted.internet.threads import deferToThread
 from twisted.python import log
 from twisted.python.components import registerAdapter
-from twisted.internet.defer import succeed, gatherResults, fail
-from twisted.application.service import Service, IService
-from twisted.internet.task import cooperate
+from twisted.web import http
+from zope.interface import implements
 
-from nevow.inevow import IResource, IRequest
-from nevow.static import File
-from nevow.rend import NotFound
-
-from entropy.ientropy import (
-    IContentStore, IContentObject, ISiblingStore, IBackendStore,
-    IUploadScheduler, IMigrationManager, IMigration)
-from entropy.errors import (
-    CorruptObject, NonexistentObject, DigestMismatch, APIError)
-from entropy.hash import getHash
-from entropy.util import deferred
 from entropy.client import Endpoint
+from entropy.errors import (
+    APIError, CorruptObject, DigestMismatch, NonexistentObject)
+from entropy.hash import getHash
+from entropy.ientropy import (
+    IBackendStore, IContentObject, IContentStore, IMigration,
+    IMigrationManager, ISiblingStore, IUploadScheduler)
+from entropy.util import deferred
 
 
 
@@ -66,6 +64,12 @@ class ImmutableObject(Item):
     content = path(allowNone=False)
     contentType = text(allowNone=False)
     created = timestamp(allowNone=False, defaultFactory=lambda: Time())
+
+    _deferToThreadPool = inmemory()
+
+    def activate(self):
+        self._deferToThreadPool = lambda f, *a, **kw: execute(f, *a, **kw)
+
 
     @property
     def metadata(self):
@@ -94,7 +98,7 @@ class ImmutableObject(Item):
 
 
     def getContent(self):
-        return self.content.getContent()
+        return self._deferToThreadPool(self.content.getContent)
 
 
 def objectResource(obj):
@@ -146,12 +150,14 @@ class PendingMigration(Item):
             self.lastFailure = unicode(
                 f.getTraceback(), 'ascii', errors='replace')
 
-        d = self.parent.destination.storeObject(
-            content=self.obj.getContent(),
-            contentType=self.obj.contentType,
-            metadata=self.obj.metadata,
-            created=self.obj.created,
-            objectId=self.obj.objectId)
+        d = self.obj.getContent()
+        d.addCallback(
+            lambda content: self.parent.destination.storeObject(
+                content=content,
+                contentType=self.obj.contentType,
+                metadata=self.obj.metadata,
+                created=self.obj.created,
+                objectId=self.obj.objectId))
         d.addCallbacks(_cb, _eb)
         return d
 
@@ -230,6 +236,10 @@ class ContentStore(Item):
 
     hash = text(allowNone=False, default=u'sha256')
 
+    def _deferToThreadPool(self, f, *a, **kw):
+        return deferToThread(f, *a, **kw)
+
+
     @transacted
     def _storeObject(self, content, contentType, metadata={}, created=None):
         """
@@ -263,9 +273,11 @@ class ContentStore(Item):
                                   content=contentFile.finalpath,
                                   contentType=contentType,
                                   created=created)
+            obj._deferToThreadPool = self._deferToThreadPool
         else:
             obj.contentType = contentType
             obj.created = created
+            obj._deferToThreadPool = self._deferToThreadPool
 
         scheduler = IUploadScheduler(self.store, None)
         for backend in self.store.powerupsFor(IBackendStore):
@@ -283,10 +295,12 @@ class ContentStore(Item):
         @param obj: the object to import.
         @type obj: ImmutableObject
         """
-        return self._storeObject(obj.getContent(),
-                                 obj.contentType,
-                                 obj.metadata,
-                                 obj.created)
+        return obj.getContent().addCallback(
+            lambda content: self._storeObject(
+                content,
+                obj.contentType,
+                obj.metadata,
+                obj.created))
 
 
     @transacted
@@ -334,6 +348,7 @@ class ContentStore(Item):
             default=None)
         if obj is None:
             raise NonexistentObject(objectId)
+        obj._deferToThreadPool = self._deferToThreadPool
         return obj
 
 
@@ -525,12 +540,15 @@ class _PendingUpload(Item):
         will be deleted.
         """
         def _uploadObject(obj):
-            return self.backend.storeObject(
-                obj.getContent(),
-                obj.contentType,
-                obj.metadata,
-                obj.created,
-                objectId=self.objectId)
+            d = obj.getContent()
+            d.addCallback(
+                lambda content: self.backend.storeObject(
+                    content,
+                    obj.contentType,
+                    obj.metadata,
+                    obj.created,
+                    objectId=self.objectId))
+            return d
 
         def _reschedule(f):
             # We do this instead of returning a Time from attemptUpload,
@@ -539,7 +557,6 @@ class _PendingUpload(Item):
                 self.objectId, self.backend))
             self.scheduled = self._nextAttempt()
             self.schedule()
-            return f
 
         d = succeed(None)
         d.addCallback(
