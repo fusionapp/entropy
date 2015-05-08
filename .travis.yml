@@ -2,6 +2,7 @@ branches:
   only:
     - master
 
+sudo: false
 language: python
 
 matrix:
