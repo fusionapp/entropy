@@ -613,6 +613,7 @@ class ImmutableObjectTests(TestCase):
     def setUp(self):
         self.store = Store(self.mktemp())
         self.contentStore = ContentStore(store=self.store)
+        object.__setattr__(self.contentStore, '_deferToThreadPool', execute)
         self.contentStore.storeObject(content='somecontent',
                                       contentType=u'application/octet-stream')
         self.testObject = self.store.findUnique(ImmutableObject)
