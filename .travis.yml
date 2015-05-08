@@ -4,6 +4,9 @@ branches:
 
 sudo: false
 language: python
+cache:
+  directories:
+    - $HOME/.cache/pip
 
 matrix:
   include:
