@@ -14,7 +14,7 @@ matrix:
     - python: '2.7'
 
 install:
-  - pip install epsilon pytz pycrypto
+  - pip install epsilon pytz pycrypto 'cryptography < 1.0'
   - pip install .
 
 script:
