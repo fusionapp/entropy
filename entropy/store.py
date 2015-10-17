@@ -68,7 +68,7 @@ class ImmutableObject(Item):
     _deferToThreadPool = inmemory()
 
     def activate(self):
-        self._deferToThreadPool = lambda f, *a, **kw: execute(f, *a, **kw)
+        self._deferToThreadPool = execute
 
 
     @property
