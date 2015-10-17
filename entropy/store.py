@@ -30,7 +30,6 @@ from nevow.inevow import IRequest, IResource
 from nevow.rend import NotFound
 from nevow.static import File
 from twisted.application.service import IService, Service
-from twisted.internet import reactor
 from twisted.internet.defer import execute, fail, gatherResults, succeed
 from twisted.internet.task import cooperate
 from twisted.internet.threads import deferToThread
