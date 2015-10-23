@@ -1,0 +1,10 @@
+FROM fusionapp/entropy-base
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -qy libffi-dev libssl-dev pypy-dev gcc libc6-dev zlib1g-dev libjpeg-dev
+RUN . /appenv/bin/activate && pip install --upgrade wheel requests[security] 'cryptography<1.0'
+
+ENV WHEELHOUSE=/wheelhouse
+ENV PIP_WHEEL_DIR=/wheelhouse
+ENV PIP_FIND_LINKS=/wheelhouse
+ENTRYPOINT . /appenv/bin/activate \
+  && cd /application \
+  && pip wheel 'cryptography<1.0' .

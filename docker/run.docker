@@ -1,0 +1,10 @@
+FROM fusionapp/entropy-base
+
+COPY wheelhouse /wheelhouse
+RUN /appenv/bin/pip install --no-index -f /wheelhouse Entropy
+RUN /appenv/bin/trial --temp-directory=/tmp/_trial_temp --reporter=text entropy \
+  && rm -rf /tmp/_trial_temp
+
+WORKDIR "/appenv"
+ENTRYPOINT ["/appenv/bin/axiomatic", "-d", "/db/entropy.axiom"]
+CMD ["start", "--pidfile", "", "-n"]
