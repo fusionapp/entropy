@@ -17,12 +17,13 @@ from nevow.static import File
 from nevow.testutil import FakeRequest
 from twisted.application.service import IService
 from twisted.internet.defer import execute, fail, succeed
+from twisted.python.components import proxyForInterface
 from twisted.trial.unittest import TestCase
 from twisted.web import http
-from zope.interface import implements
+from zope.interface import implementer
 
 from entropy.client import Endpoint
-from entropy.errors import CorruptObject, NonexistentObject
+from entropy.errors import CorruptObject, IrreparableError, NonexistentObject
 from entropy.ientropy import (
     IBackendStore, IContentStore, IMigration, ISiblingStore, IUploadScheduler)
 from entropy.store import (
@@ -317,13 +318,13 @@ class MigrationTests(TestCase):
 
 
 
+@implementer(IContentStore)
 class MockContentStore(Item):
     """
     Mock content store that just logs calls.
 
     @ivar events: A list of logged calls.
     """
-    implements(IContentStore)
 
     dummy = integer()
     events = inmemory()
@@ -358,11 +359,11 @@ class MockContentStore(Item):
 
 
 
+@implementer(IUploadScheduler)
 class MockUploadScheduler(object):
     """
     Mock implementation of L{IUploadScheduler}.
     """
-    implements(IUploadScheduler)
 
     def __init__(self):
         self.uploads = []
@@ -370,6 +371,16 @@ class MockUploadScheduler(object):
 
     def scheduleUpload(self, objectId, backend):
         self.uploads.append((objectId, backend))
+
+
+
+@implementer(IUploadScheduler)
+class NullUploadScheduler(object):
+    """
+    Upload scheduler that does nothing.
+    """
+    def scheduleUpload(self, objectId, backend):
+        pass
 
 
 
@@ -674,11 +685,11 @@ class ImmutableObjectTests(TestCase):
 
 
 
+@implementer(IMigration)
 class TestMigration(Item):
     """
     Test double implementing IMigration.
     """
-    implements(IMigration)
     powerupInterfaces = [IMigration]
 
     ran = integer(default=0)
@@ -734,3 +745,183 @@ class MigrationManagerTests(TestCase):
         self.assertEquals(result.ran, 1)
         self.assertEquals(source.migrationDestination, destination)
         self.assertEquals(IMigration(self.store), result)
+
+
+
+class ProxyStore(proxyForInterface(IContentStore), Item):
+    """
+    Content store that just proxies to some other object.
+
+    Usually used with a L{ContentStore} in another store.
+    """
+    dummy = integer()
+    original = inmemory()
+
+    def __init__(self, store, original):
+        super(ProxyStore, self).__init__(store=store)
+        self.original = original
+
+
+
+class VerificationTests(TestCase):
+    """
+    Tests for integrity verification.
+    """
+    def _store(self):
+        store = Store(self.mktemp())
+        store.inMemoryPowerUp(NullUploadScheduler(), IUploadScheduler)
+        contentStore = ContentStore(store=store)
+        store.powerUp(contentStore, IContentStore)
+        object.__setattr__(contentStore, '_deferToThreadPool', execute)
+        return contentStore
+
+
+    def _storeObject(self, contentStore, content, contentType):
+        return self.successResultOf(
+            contentStore.storeObject(
+                content=content, contentType=contentType).addCallback(
+                    contentStore.getObject))
+
+
+    def _verify(self, contentStore, obj):
+        """
+        Run a verification on an object.
+        """
+        migration = LocalStoreMigration(
+            store=obj.store, source=contentStore, destination=None, start=0,
+            current=0, end=0)
+        pending = PendingMigration(store=obj.store, parent=migration, obj=obj)
+        return pending._verify()
+
+
+    def test_oneStoreIntact(self):
+        """
+        Verifying an object with the correct digest, and no other backends,
+        completes without error.
+        """
+        contentStore = self._store()
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        self.successResultOf(self._verify(contentStore, obj))
+
+
+    def test_oneStoreDamaged(self):
+        """
+        Verifying an object with incorrect content, and no other backends,
+        results in an L{IrreparableError} failure.
+        """
+        contentStore = self._store()
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj.content.setContent('damaged')
+        self.failureResultOf(self._verify(contentStore, obj), IrreparableError)
+
+
+    def test_twoStoresIntact(self):
+        """
+        Verifying an object with the correct content, and one backend with a
+        copy that also has the correct content, completes without error.
+        """
+        contentStore = self._store()
+        store = contentStore.store
+        contentStore2 = self._store()
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj2 = self._storeObject(
+            contentStore=contentStore2,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        store.inMemoryPowerUp(contentStore2, IBackendStore)
+        self.successResultOf(self._verify(contentStore, obj))
+
+
+    def test_twoStoresRepair(self):
+        """
+        Verifying an object with the correct content, and one backend with a
+        copy that has incorrect content, repairs the object in the backend
+        successfully.
+        """
+        contentStore = self._store()
+        store = contentStore.store
+        contentStore2 = self._store()
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj2 = self._storeObject(
+            contentStore=contentStore2,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj2.content.setContent('damaged')
+        store.inMemoryPowerUp(contentStore2, IBackendStore)
+        self.successResultOf(self._verify(contentStore, obj))
+        self.assertEquals(obj2.content.getContent(), 'somecontent')
+
+
+    def test_twoStoresRepairFromRemote(self):
+        """
+        Verifying an object with incorrect content, but one backend with a
+        copy that has the correct content, repairs the local object
+        successfully.
+        """
+        contentStore = self._store()
+        store = contentStore.store
+        contentStore2 = self._store()
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj2 = self._storeObject(
+            contentStore=contentStore2,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj.content.setContent('damaged')
+        store.inMemoryPowerUp(contentStore2, IBackendStore)
+        self.successResultOf(self._verify(contentStore, obj))
+        self.assertEquals(obj.content.getContent(), 'somecontent')
+
+
+    def test_twoStoresBothDamaged(self):
+        """
+        Verifying an object with incorrect content, and all backends with
+        corrupt copies, results in an L{IrreparableError} failure.
+        """
+        contentStore = self._store()
+        store = contentStore.store
+        contentStore2 = self._store()
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj2 = self._storeObject(
+            contentStore=contentStore2,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        obj.content.setContent('damaged')
+        obj2.content.setContent('also damaged')
+        store.inMemoryPowerUp(contentStore2, IBackendStore)
+        self.failureResultOf(self._verify(contentStore, obj), IrreparableError)
+
+
+    def test_twoStoresMissing(self):
+        """
+        Verifying an object with the correct content, and one backend with the
+        object missing, uploads the object to the backend.
+        """
+        contentStore = self._store()
+        store = contentStore.store
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        contentStore2 = self._store()
+        store.inMemoryPowerUp(contentStore2, IBackendStore)
+        self.successResultOf(self._verify(contentStore, obj))
+        obj2 = self.successResultOf(contentStore2.getObject(obj.objectId))
+        self.assertEquals(obj2.content.getContent(), 'somecontent')

@@ -60,5 +60,15 @@ class APIError(RuntimeError):
         @type  code: L{int}
         @param code: Error code.
         """
-        Exception.__init__(self, message)
+        RuntimeError.__init__(self, message)
         self.code = code
+
+
+
+class IrreparableError(RuntimeError):
+    """
+    An inconsistency was detected that cannot be repaired automatically.
+    """
+    def __init__(self, objectId):
+        RuntimeError.__init__(self, objectId)
+        self.objectId = objectId
