@@ -259,7 +259,10 @@ class LocalStoreMigration(Item):
         doc="The content store that is the source of this migration")
     destination = reference(
         allowNone=True,
-        doc="The content store that is the destination of this migration")
+        doc="""
+        The content store that is the destination of this migration. If
+        C{None}, this is a "validation" migration.
+        """)
     start = integer(allowNone=False, doc="Starting storeID")
     current = integer(allowNone=False, doc="Most recent storeID migrated")
     end = integer(allowNone=False, doc="Ending storeID")
@@ -301,9 +304,11 @@ class LocalStoreMigration(Item):
         def _done(ign):
             self._running = False
 
-        it = (m.attemptMigration()
-              for m in chain(self.store.query(PendingMigration),
-                             iter(self._nextObject, None)))
+        migrations = chain(
+            self.store.query(
+                PendingMigration, PendingMigration.parent == self),
+            iter(self._nextObject, None))
+        it = (m.attemptMigration() for m in migrations)
         tasks = [cooperate(it) for _ in xrange(self.concurrency)]
         d = gatherResults([task.whenDone() for task in tasks])
         d.addCallback(_done)
