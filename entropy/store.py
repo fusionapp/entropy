@@ -153,7 +153,9 @@ class PendingMigration(Item):
             corrupt = []
             goodObj = None
             goodContent = None
-            log.debug('Verifying {objectId!s}', objectId=self.obj.objectId)
+            log.debug(
+                'Verifying {objectId!s} in {backends!s}',
+                objectId=self.obj.objectId, backends=repr(backends))
             for backend, (obj, content) in zip(backends, cs):
                 if content is None:
                     corrupt.append(backend)
