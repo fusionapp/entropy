@@ -24,6 +24,7 @@ from axiom.attributes import (
     AND, inmemory, integer, path, reference, text, timestamp)
 from axiom.dependency import dependsOn
 from axiom.iaxiom import IScheduler
+from twisted.python.filepath import FilePath
 from axiom.item import Item, transacted
 from epsilon.extime import Time
 from nevow.inevow import IRequest, IResource
@@ -171,6 +172,14 @@ class PendingMigration(Item):
                         goodContent = content
                 else:
                     corrupt.append(backend)
+                    path = FilePath('corrupt').temporarySibling()
+                    log.debug(
+                        'Saving corrupt content for {objectId!s} from '
+                        '{backend!r} in {path!s}.',
+                        objectId=objectId,
+                        backend=backend,
+                        path=path)
+                    path.setContent(content)
             if goodObj is None:
                 log.error(
                     'All copies of {objectId!s} are corrupt, unable to repair!',
