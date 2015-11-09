@@ -276,7 +276,7 @@ class LocalStoreMigration(Item):
     current = integer(allowNone=False, doc="Most recent storeID migrated")
     end = integer(allowNone=False, doc="Ending storeID")
 
-    concurrency = 20
+    concurrency = 15
 
     _running = inmemory()
 
