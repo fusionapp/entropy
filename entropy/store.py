@@ -358,15 +358,21 @@ class ContentStore(Item):
                 ImmutableObject.contentDigest == contentDigest),
             default=None)
         if obj is None:
+            log.debug('Writing new object')
             bucket = contentDigest[:3]
             contentFile = self.store.newFile(
                 'objects', 'immutable', bucket,
                 '%s:%s' % (self.hash, contentDigest))
+            log.debug(
+                'Opened new file: {contentFile}',
+                contentFile=repr(contentFile))
             contentFile.write(content)
             contentFile.close().addErrback(
                 lambda f: log.failure(
                     'Error writing object to {name!r}:',
                     f, name=contentFile.name))
+            log.debug(
+                'Object written to: {name!r}', name=contentFile.finalpath)
 
             obj = ImmutableObject(store=self.store,
                                   contentDigest=contentDigest,
@@ -374,6 +380,8 @@ class ContentStore(Item):
                                   content=contentFile.finalpath,
                                   contentType=contentType,
                                   created=created)
+            log.debug(
+                'Object created: {obj!r}', obj=obj)
             obj._deferToThreadPool = self._deferToThreadPool
         else:
             obj.contentType = contentType
