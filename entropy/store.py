@@ -276,7 +276,7 @@ class LocalStoreMigration(Item):
     current = integer(allowNone=False, doc="Most recent storeID migrated")
     end = integer(allowNone=False, doc="Ending storeID")
 
-    concurrency = 15
+    concurrency = 10
 
     _running = inmemory()
 
@@ -363,7 +363,10 @@ class ContentStore(Item):
                 'objects', 'immutable', bucket,
                 '%s:%s' % (self.hash, contentDigest))
             contentFile.write(content)
-            contentFile.close()
+            contentFile.close().addErrback(
+                lambda f: log.failure(
+                    'Error writing object to {name!r}:',
+                    f, name=contentFile.name))
 
             obj = ImmutableObject(store=self.store,
                                   contentDigest=contentDigest,
