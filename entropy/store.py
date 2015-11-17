@@ -593,7 +593,8 @@ class RemoteEntropyStore(Item):
 
     # IContentStore
 
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def storeObject(self, content, contentType, metadata={}, created=None,
+                    objectId=None):
         return self._endpoint.store(
             content=content,
             contentType=contentType,
