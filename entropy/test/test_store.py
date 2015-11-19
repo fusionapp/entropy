@@ -835,7 +835,8 @@ class VerificationTests(TestCase):
             content='somecontent',
             contentType=u'application/octet-stream')
         obj.content.setContent('damaged')
-        self.failureResultOf(self._verify(contentStore, obj), NoGoodCopies)
+        f = self.failureResultOf(self._verify(contentStore, obj), NoGoodCopies)
+        self.assertEqual(f.value.objectId, obj.objectId)
 
 
     def test_twoStoresIntact(self):
@@ -923,7 +924,8 @@ class VerificationTests(TestCase):
         obj.content.setContent('damaged')
         obj2.content.setContent('also damaged')
         store.inMemoryPowerUp(contentStore2, IBackendStore)
-        self.failureResultOf(self._verify(contentStore, obj), NoGoodCopies)
+        f = self.failureResultOf(self._verify(contentStore, obj), NoGoodCopies)
+        self.assertEqual(f.value.objectId, obj.objectId)
 
 
     def test_twoStoresMissing(self):
@@ -957,4 +959,6 @@ class VerificationTests(TestCase):
             contentType=u'application/octet-stream')
         contentStore2 = InsaneStore(store=store)
         store.inMemoryPowerUp(contentStore2, IBackendStore)
-        self.failureResultOf(self._verify(contentStore, obj), UnexpectedDigest)
+        f = self.failureResultOf(
+            self._verify(contentStore, obj), UnexpectedDigest)
+        self.assertEqual(f.value.objectId, obj.objectId)
