@@ -1,6 +1,8 @@
 """
-@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+@copyright: 2007 Fusion Dealership Systems (Pty) Ltd. See LICENSE for details.
 """
+
+
 class UnknownHashAlgorithm(ValueError):
     """
     An unknown hash algorithm was specified.

@@ -1,5 +1,5 @@
 """
-@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+@copyright: 2007 Fusion Dealership Systems (Pty) Ltd. See LICENSE for details.
 
 Object data store.
 
