@@ -24,7 +24,6 @@ from axiom.attributes import (
     AND, inmemory, integer, path, reference, text, timestamp)
 from axiom.dependency import dependsOn
 from axiom.iaxiom import IScheduler
-from twisted.python.filepath import FilePath
 from axiom.item import Item, transacted
 from epsilon.extime import Time
 from nevow.inevow import IRequest, IResource
@@ -36,13 +35,14 @@ from twisted.internet.task import cooperate
 from twisted.internet.threads import deferToThread
 from twisted.logger import Logger
 from twisted.python.components import registerAdapter
+from twisted.python.filepath import FilePath
 from twisted.web import http
 from zope.interface import implements
 
 from entropy.client import Endpoint
 from entropy.errors import (
-    APIError, CorruptObject, DigestMismatch, IrreparableError,
-    NonexistentObject)
+    APIError, CorruptObject, DigestMismatch, NoGoodCopies, NonexistentObject,
+    UnexpectedDigest)
 from entropy.hash import getHash
 from entropy.ientropy import (
     IBackendStore, IContentObject, IContentStore, IMigration,
@@ -140,6 +140,11 @@ class PendingMigration(Item):
         The contents of the object in every store is verified against the
         content digest; any missing or corrupt objects are replaced with a
         non-corrupt version, if possible.
+
+        @raise NoGoodCopies: If no good copy could be found to repair from.
+
+        @raise UnexpectedDigest: If a backend returned a different object to
+        the one requested.
         """
         def getContent(obj):
             return obj.getContent().addCallback(lambda content: (obj, content))
@@ -165,7 +170,7 @@ class PendingMigration(Item):
                         left=expected,
                         right=obj.contentDigest,
                         backend=backend)
-                    raise IrreparableError(objectId)
+                    raise UnexpectedDigest(objectId)
                 if unicode(hashFunc(content).hexdigest(), 'ascii') == expected:
                     if goodObj is None:
                         goodObj = obj
@@ -184,7 +189,7 @@ class PendingMigration(Item):
                 log.error(
                     'All copies of {objectId!s} are corrupt, unable to repair!',
                     objectId=objectId)
-                raise IrreparableError(objectId)
+                raise NoGoodCopies(objectId)
             else:
                 ds = []
                 for backend in corrupt:

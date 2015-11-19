@@ -23,7 +23,8 @@ from twisted.web import http
 from zope.interface import implementer
 
 from entropy.client import Endpoint
-from entropy.errors import CorruptObject, IrreparableError, NonexistentObject
+from entropy.errors import (
+    CorruptObject, NoGoodCopies, NonexistentObject, UnexpectedDigest)
 from entropy.ientropy import (
     IBackendStore, IContentStore, IMigration, ISiblingStore, IUploadScheduler)
 from entropy.store import (
@@ -763,6 +764,22 @@ class ProxyStore(proxyForInterface(IContentStore), Item):
 
 
 
+class InsaneStore(Item):
+    """
+    Content store that doesn't return the object you asked for.
+    """
+    dummy = integer()
+
+    def getObject(self, *args, **kwargs):
+        return succeed(MemoryObject(
+            content=u'haha',
+            hash=u'sha256',
+            contentDigest=u'what is a digest even',
+            contentType=u'insanity/madness',
+            created=Time()))
+
+
+
 class VerificationTests(TestCase):
     """
     Tests for integrity verification.
@@ -810,7 +827,7 @@ class VerificationTests(TestCase):
     def test_oneStoreDamaged(self):
         """
         Verifying an object with incorrect content, and no other backends,
-        results in an L{IrreparableError} failure.
+        results in a L{NoGoodCopies} failure.
         """
         contentStore = self._store()
         obj = self._storeObject(
@@ -818,7 +835,7 @@ class VerificationTests(TestCase):
             content='somecontent',
             contentType=u'application/octet-stream')
         obj.content.setContent('damaged')
-        self.failureResultOf(self._verify(contentStore, obj), IrreparableError)
+        self.failureResultOf(self._verify(contentStore, obj), NoGoodCopies)
 
 
     def test_twoStoresIntact(self):
@@ -890,7 +907,7 @@ class VerificationTests(TestCase):
     def test_twoStoresBothDamaged(self):
         """
         Verifying an object with incorrect content, and all backends with
-        corrupt copies, results in an L{IrreparableError} failure.
+        corrupt copies, results in a L{NoGoodCopies} failure.
         """
         contentStore = self._store()
         store = contentStore.store
@@ -906,7 +923,7 @@ class VerificationTests(TestCase):
         obj.content.setContent('damaged')
         obj2.content.setContent('also damaged')
         store.inMemoryPowerUp(contentStore2, IBackendStore)
-        self.failureResultOf(self._verify(contentStore, obj), IrreparableError)
+        self.failureResultOf(self._verify(contentStore, obj), NoGoodCopies)
 
 
     def test_twoStoresMissing(self):
@@ -925,3 +942,19 @@ class VerificationTests(TestCase):
         self.successResultOf(self._verify(contentStore, obj))
         obj2 = self.successResultOf(contentStore2.getObject(obj.objectId))
         self.assertEquals(obj2.content.getContent(), 'somecontent')
+
+
+    def test_misbehavingBackend(self):
+        """
+        Verifying an object with a backend that returns the wrong object
+        results in an L{UnexpectedDigest} failure.
+        """
+        contentStore = self._store()
+        store = contentStore.store
+        obj = self._storeObject(
+            contentStore=contentStore,
+            content='somecontent',
+            contentType=u'application/octet-stream')
+        contentStore2 = InsaneStore(store=store)
+        store.inMemoryPowerUp(contentStore2, IBackendStore)
+        self.failureResultOf(self._verify(contentStore, obj), UnexpectedDigest)

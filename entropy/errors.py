@@ -74,3 +74,21 @@ class IrreparableError(RuntimeError):
     def __init__(self, objectId):
         RuntimeError.__init__(self, objectId)
         self.objectId = objectId
+
+
+
+class NoGoodCopies(IrreparableError):
+    """
+    No copies of an object could be found which match the content digest.
+    """
+
+
+
+class UnexpectedDigest(IrreparableError):
+    """
+    The metadata of object had a different digest when retrieved than expected.
+
+    This exception signals a I{metadata} inconsistency; it does not refer to
+    the actual object contents. This likely means that a backend is
+    malfunctioning.
+    """
