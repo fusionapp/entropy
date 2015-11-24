@@ -1,6 +1,8 @@
 """
-@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+@copyright: 2007 Fusion Dealership Systems (Pty) Ltd. See LICENSE for details.
 """
+
+
 class UnknownHashAlgorithm(ValueError):
     """
     An unknown hash algorithm was specified.
@@ -60,5 +62,33 @@ class APIError(RuntimeError):
         @type  code: L{int}
         @param code: Error code.
         """
-        Exception.__init__(self, message)
+        RuntimeError.__init__(self, message)
         self.code = code
+
+
+
+class IrreparableError(RuntimeError):
+    """
+    An inconsistency was detected that cannot be repaired automatically.
+    """
+    def __init__(self, objectId):
+        RuntimeError.__init__(self, objectId)
+        self.objectId = objectId
+
+
+
+class NoGoodCopies(IrreparableError):
+    """
+    No copies of an object could be found which match the content digest.
+    """
+
+
+
+class UnexpectedDigest(IrreparableError):
+    """
+    The metadata of object had a different digest when retrieved than expected.
+
+    This exception signals a I{metadata} inconsistency; it does not refer to
+    the actual object contents. This likely means that a backend is
+    malfunctioning.
+    """

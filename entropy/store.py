@@ -1,5 +1,5 @@
 """
-@copyright: 2007-2014 Quotemaster cc. See LICENSE for details.
+@copyright: 2007 Fusion Dealership Systems (Pty) Ltd. See LICENSE for details.
 
 Object data store.
 
@@ -33,14 +33,16 @@ from twisted.application.service import IService, Service
 from twisted.internet.defer import execute, fail, gatherResults, succeed
 from twisted.internet.task import cooperate
 from twisted.internet.threads import deferToThread
-from twisted.python import log
+from twisted.logger import Logger
 from twisted.python.components import registerAdapter
+from twisted.python.filepath import FilePath
 from twisted.web import http
 from zope.interface import implements
 
 from entropy.client import Endpoint
 from entropy.errors import (
-    APIError, CorruptObject, DigestMismatch, NonexistentObject)
+    APIError, CorruptObject, DigestMismatch, NoGoodCopies, NonexistentObject,
+    UnexpectedDigest)
 from entropy.hash import getHash
 from entropy.ientropy import (
     IBackendStore, IContentObject, IContentStore, IMigration,
@@ -131,6 +133,108 @@ class PendingMigration(Item):
         doc="A description of the last failed migration attempt, if any.")
 
 
+    def _verify(self):
+        """
+        Verify an object.
+
+        The contents of the object in every store is verified against the
+        content digest; any missing or corrupt objects are replaced with a
+        non-corrupt version, if possible.
+
+        @raise NoGoodCopies: If no good copy could be found to repair from.
+
+        @raise UnexpectedDigest: If a backend returned a different object to
+        the one requested.
+        """
+        def getContent(obj):
+            return obj.getContent().addCallback(lambda content: (obj, content))
+
+        def handleMissing(f):
+            f.trap(NonexistentObject)
+            return None, None
+
+        def gotContents(cs):
+            hashFunc = getHash(self.obj.hash)
+            expected = self.obj.contentDigest
+            corrupt = []
+            goodObj = None
+            goodContent = None
+            for backend, (obj, content) in zip(backends, cs):
+                if content is None:
+                    corrupt.append(backend)
+                    continue
+                if obj.contentDigest != expected:
+                    log.error(
+                        'Unexpected content digest mismatch! '
+                        '{left!s} != {right!s} in {backend!r}',
+                        left=expected,
+                        right=obj.contentDigest,
+                        backend=backend)
+                    raise UnexpectedDigest(objectId)
+                if unicode(hashFunc(content).hexdigest(), 'ascii') == expected:
+                    if goodObj is None:
+                        goodObj = obj
+                        goodContent = content
+                else:
+                    corrupt.append(backend)
+                    path = FilePath('corrupt').temporarySibling()
+                    log.debug(
+                        'Saving corrupt content for {objectId!s} from '
+                        '{backend!r} in {path!s}.',
+                        objectId=objectId,
+                        backend=backend,
+                        path=path)
+                    path.setContent(content)
+            if goodObj is None:
+                log.error(
+                    'All copies of {objectId!s} are corrupt, unable to repair!',
+                    objectId=objectId)
+                raise NoGoodCopies(objectId)
+            else:
+                ds = []
+                for backend in corrupt:
+                    log.info(
+                        'Repairing {objectId!s} in {backend!r}',
+                        objectId=self.obj.objectId, backend=backend)
+                    ds.append(backend.storeObject(
+                        content=goodContent,
+                        contentType=goodObj.contentType,
+                        metadata=goodObj.metadata,
+                        created=goodObj.created,
+                        objectId=objectId))
+                return gatherResults(ds, consumeErrors=True)
+
+        objectId = self.obj.objectId
+        backends = [self.parent.source]
+        backends.extend(self.store.powerupsFor(ISiblingStore))
+        backends.extend(self.store.powerupsFor(IBackendStore))
+        contents = [succeed(self.obj).addCallback(getContent)] + [
+            backend.getObject(objectId).addCallbacks(
+                getContent, handleMissing)
+            for backend in backends[1:]]
+        return gatherResults(contents, consumeErrors=True).addCallback(
+            gotContents)
+
+
+    def _migrate(self):
+        """
+        Migrate an object from one store to another.
+        """
+        if self.parent.destination is None:
+            # This is a "verification" migration
+            return self._verify()
+
+        d = self.obj.getContent()
+        d.addCallback(
+            lambda content: self.parent.destination.storeObject(
+                content=content,
+                contentType=self.obj.contentType,
+                metadata=self.obj.metadata,
+                created=self.obj.created,
+                objectId=self.obj.objectId))
+        return d
+
+
     def attemptMigration(self):
         """
         Perform one attempt at migration of the object being tracked.
@@ -144,21 +248,16 @@ class PendingMigration(Item):
             self.deleteFromStore()
 
         def _eb(f):
-            log.err(f, 'Error during migration of %r from %r to %r' % (
-                self.obj.objectId, self.parent.source, self.parent.destination))
+            log.failure(
+                'Error during migration of {objectId!r} from {source!r} to {destination!r}',
+                failure=f,
+                objectId=self.obj.objectId,
+                source=self.parent.source,
+                destination=self.parent.destination)
             self.lastFailure = unicode(
                 f.getTraceback(), 'ascii', errors='replace')
 
-        d = self.obj.getContent()
-        d.addCallback(
-            lambda content: self.parent.destination.storeObject(
-                content=content,
-                contentType=self.obj.contentType,
-                metadata=self.obj.metadata,
-                created=self.obj.created,
-                objectId=self.obj.objectId))
-        d.addCallbacks(_cb, _eb)
-        return d
+        return self._migrate().addCallbacks(_cb, _eb)
 
 
 
@@ -173,13 +272,16 @@ class LocalStoreMigration(Item):
         allowNone=False,
         doc="The content store that is the source of this migration")
     destination = reference(
-        allowNone=False,
-        doc="The content store that is the destination of this migration")
+        allowNone=True,
+        doc="""
+        The content store that is the destination of this migration. If
+        C{None}, this is a "validation" migration.
+        """)
     start = integer(allowNone=False, doc="Starting storeID")
     current = integer(allowNone=False, doc="Most recent storeID migrated")
     end = integer(allowNone=False, doc="Ending storeID")
 
-    concurrency = 4
+    concurrency = 10
 
     _running = inmemory()
 
@@ -216,9 +318,11 @@ class LocalStoreMigration(Item):
         def _done(ign):
             self._running = False
 
-        it = (m.attemptMigration()
-              for m in chain(self.store.query(PendingMigration),
-                             iter(self._nextObject, None)))
+        migrations = chain(
+            self.store.query(
+                PendingMigration, PendingMigration.parent == self),
+            iter(self._nextObject, None))
+        it = (m.attemptMigration() for m in migrations)
         tasks = [cooperate(it) for _ in xrange(self.concurrency)]
         d = gatherResults([task.whenDone() for task in tasks])
         d.addCallback(_done)
@@ -264,7 +368,10 @@ class ContentStore(Item):
                 'objects', 'immutable', bucket,
                 '%s:%s' % (self.hash, contentDigest))
             contentFile.write(content)
-            contentFile.close()
+            contentFile.close().addErrback(
+                lambda f: log.failure(
+                    'Error writing object to {name!r}:',
+                    f, name=contentFile.name))
 
             obj = ImmutableObject(store=self.store,
                                   contentDigest=contentDigest,
@@ -276,6 +383,7 @@ class ContentStore(Item):
         else:
             obj.contentType = contentType
             obj.created = created
+            obj.content.setContent(content)
             obj._deferToThreadPool = self._deferToThreadPool
 
         scheduler = IUploadScheduler(self.store, None)
@@ -331,7 +439,8 @@ class ContentStore(Item):
     # IContentStore
 
     @deferred
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def storeObject(self, content, contentType, metadata={}, created=None,
+                    objectId=None):
         obj = self._storeObject(content, contentType, metadata, created)
         return obj.objectId
 
@@ -489,7 +598,8 @@ class RemoteEntropyStore(Item):
 
     # IContentStore
 
-    def storeObject(self, content, contentType, metadata={}, created=None):
+    def storeObject(self, content, contentType, metadata={}, created=None,
+                    objectId=None):
         return self._endpoint.store(
             content=content,
             contentType=contentType,
@@ -552,8 +662,11 @@ class _PendingUpload(Item):
         def _reschedule(f):
             # We do this instead of returning a Time from attemptUpload,
             # because that can only be done synchronously.
-            log.err(f, 'Error uploading object %r to backend store %r' % (
-                self.objectId, self.backend))
+            log.failure(
+                'Error uploading object {objectId!r} to backend store {backend!r}',
+                failure=f,
+                objectId=self.objectId,
+                backend=self.backend)
             self.scheduled = self._nextAttempt()
             self.schedule()
 
@@ -651,3 +764,7 @@ class MigrationManager(Item, Service):
         self.running = True
         for migration in self.store.powerupsFor(IMigration):
             migration.run()
+
+
+
+log = Logger()
