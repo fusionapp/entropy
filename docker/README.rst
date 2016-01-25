@@ -1,38 +1,28 @@
 Building the Entropy Docker container
 =====================================
 
-There are three Docker containers defined: run.docker defines the actual
-container used to run Entropy, build.docker is used to build the wheels
-required for the "run" container, and base.docker is used to define a base
-container which is shared between the "build" and "run" containers as an
-optimization.
+Entropy is built off the standard fusionapp/base container.
 
 Build process
 -------------
 
-1. Build the base container.
+1. Pull the base container.
 
    .. code-block:: shell-session
 
-      $ docker build -t fusionapp/entropy-base -f docker/base.docker .
+      $ docker pull fusionapp/base
 
-2. Build the build container.
-
-   .. code-block:: shell-session
-
-      $ docker build -t fusionapp/entropy-build -f docker/build.docker .
-
-3. Run the build container to build the necessary wheels.
+2. Run the base container to build the necessary wheels.
 
    .. code-block:: shell-session
 
-      $ docker run --rm -ti -v "${PWD}:/application" -v "${PWD}/wheelhouse:/wheelhouse" fusionapp/entropy-build
+      $ docker run --rm --interactive --volume=${PWD}:/application --volume=${PWD}/wheelhouse:/wheelhouse fusionapp/base
 
    The built wheels will be placed in the "wheelhouse" directory at the root
-   of the repository. This is necessary for building the final container.
+   of the repository.
 
-4. Build the run container.
+3. Build the entropy container.
 
    .. code-block:: shell-session
 
-      $ docker build -t fusionapp/entropy -f docker/run.docker .
+      $ docker build --tag=fusionapp/entropy --file=docker/entropy.docker .
