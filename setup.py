@@ -24,5 +24,4 @@ setup(
                       'Axiom >= 0.7.4',
                       'Nevow >= 0.9.8',
                       'txAWS >= 0.2',
-                      'Mantissa >= 0.8.0',
-                      'cql >= 1.0.10'])
+                      'Mantissa >= 0.8.0'])
