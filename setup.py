@@ -6,7 +6,7 @@ setup(
     name='entropy-store',
     maintainer='Entropy developers',
     description='A simple content-addressed immutable object store, with flexible backend support.',
-    url='https://launchpad.net/entropy-store/',
+    url='https://github.com/fusionapp/entropy',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
