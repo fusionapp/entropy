@@ -1,7 +1,9 @@
+import versioneer
 from setuptools import find_packages, setup
 setup(
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     name='Entropy',
-    version='0.0.1',
     maintainer='Entropy developers',
     description='A simple content-addressed immutable object store, with flexible backend support.',
     url='https://launchpad.net/entropy-store/',
