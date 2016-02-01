@@ -34,9 +34,7 @@ class DummyAgent(object):
         if headers is None:
             headers = Headers({})
         response = DummyResponse()
+        response.code = 200
         response.args = (method, uri, headers, bodyProducer)
         self.responses.append(response)
         return succeed(response)
-
-
-
