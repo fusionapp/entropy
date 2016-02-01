@@ -6,8 +6,7 @@
 #
 Axiom==0.7.4
 characteristic==14.3.0    # via service-identity
-cql==1.4.0
-cryptography==1.2.1       # via pyopenssl
+cryptography==1.2.2       # via pyopenssl
 cssutils==1.0.1           # via mantissa
 enum34==1.1.2             # via cryptography
 Epsilon==0.7.1
@@ -24,7 +23,6 @@ python-dateutil==1.5      # via txaws
 PyTZ==2015.7
 service-identity==14.0.0  # via twisted
 six==1.10.0               # via cryptography, pyopenssl
-thrift==0.9.3             # via cql
 Twisted[tls]==15.5.0
 txAWS==0.2.3
 Vertex==0.3.1
