@@ -40,7 +40,7 @@ class Endpoint(object):
         Parse an Entropy HTTP response.
         """
         def _checkResult(result):
-            if int(response.code) >= 400:
+            if response.code >= 400:
                 raise APIError(result, response.code)
             return result, response
 
