@@ -1,10 +1,12 @@
+import versioneer
 from setuptools import find_packages, setup
 setup(
-    name='Entropy',
-    version='0.0.1',
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
+    name='entropy-store',
     maintainer='Entropy developers',
     description='A simple content-addressed immutable object store, with flexible backend support.',
-    url='https://launchpad.net/entropy-store/',
+    url='https://github.com/fusionapp/entropy',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
