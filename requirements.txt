@@ -4,7 +4,7 @@
 #
 #    pip-compile requirements.in
 #
-Axiom==0.7.4
+Axiom==0.7.5
 characteristic==14.3.0    # via service-identity
 cryptography==1.2.2       # via pyopenssl
 cssutils==1.0.1           # via mantissa
@@ -14,7 +14,7 @@ idna==2.0                 # via cryptography, twisted
 ipaddress==1.0.16         # via cryptography
 Mantissa==0.8.3
 Nevow==0.12.0
-Pillow==3.1.0
+Pillow==3.1.1
 pyasn1-modules==0.0.8     # via service-identity
 pyasn1==0.1.9             # via cryptography, pyasn1-modules, service-identity
 PyCrypto==2.6.1
