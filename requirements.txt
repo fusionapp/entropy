@@ -18,7 +18,7 @@ Pillow==3.1.1
 pyasn1-modules==0.0.8     # via service-identity
 pyasn1==0.1.9             # via cryptography, pyasn1-modules, service-identity
 PyCrypto==2.6.1
-PyOpenSSL==0.15.1
+PyOpenSSL==16.0.0
 python-dateutil==2.5.1      # via txaws
 PyTZ==2016.1
 service-identity==16.0.0  # via twisted
