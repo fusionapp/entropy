@@ -1,0 +1,11 @@
+[run]
+branch = True
+source =
+    entropy
+omit =
+    entropy/ientropy.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+show_missing = True
