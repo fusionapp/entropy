@@ -4,9 +4,10 @@
 #
 #    pip-compile requirements.in
 #
+attrs==15.2.0             # via service-identity
 Axiom==0.7.5
-characteristic==14.3.0    # via service-identity
-cryptography==1.3       # via pyopenssl
+cffi==1.5.2; platform_python_implementation != 'PyPy'
+cryptography==1.3         # via pyopenssl
 cssutils==1.0.1           # via mantissa
 enum34==1.1.2             # via cryptography
 Epsilon==0.7.1
@@ -18,7 +19,7 @@ Pillow==3.1.1
 pyasn1-modules==0.0.8     # via service-identity
 pyasn1==0.1.9             # via cryptography, pyasn1-modules, service-identity
 PyCrypto==2.6.1
-PyOpenSSL==0.15.1
+PyOpenSSL==16.0.0
 python-dateutil==2.5.1      # via txaws
 PyTZ==2016.1
 service-identity==16.0.0  # via twisted
