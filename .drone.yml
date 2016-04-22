@@ -52,5 +52,13 @@ notify:
     webhook_url: $$SLACK_URL
     channel: general
     username: drone
+notify:
+  slack:
+    webhook_url: $$SLACK_URL
+    channel: production
+    username: drone
+  when:
+    event: [deployment]
+    environment: production
 #branches:
 #- master
