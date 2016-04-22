@@ -60,5 +60,5 @@ notify:
     when:
       event: deployment
       environment: production
-#branches:
-#- master
+branches:
+- master
