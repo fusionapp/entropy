@@ -42,7 +42,6 @@ deploy:
         --name=entropy
         --volume=/srv/db/entropy:/db
         --publish=8000:8000
-        --workdir=/db
         scarlet.fusionapp.com:5000/fusionapp/entropy:master
     when:
       event: deployment
