@@ -1,0 +1,31 @@
+cache:
+  mount:
+    - wheelhouse
+build:
+  wheels:
+    image: fusionapp/base
+    pull: true
+    commands:
+      - >
+        /appenv/bin/pip wheel
+        --wheel-dir wheelhouse
+        --find-links wheelhouse
+        --no-cache-dir
+        --requirement requirements.txt .
+publish:
+  docker:
+    registry: scarlet.fusionapp.com:5001
+    mirror: https://scarlet.fusionapp.com:5002
+    insecure: false
+    repo: fusionapp/fusion-index
+    file: docker/fusion-index.docker
+    tag: $$BRANCH
+    when:
+      branch: [master]
+notify:
+  slack:
+    webhook_url: $$SLACK_URL
+    channel: general
+    username: drone
+#branches:
+#  - master
