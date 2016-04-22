@@ -27,7 +27,7 @@ publish:
       branch: [master]
 deploy:
   ssh:
-    host: scarlet.fusionapp.com
+    host: onyx.fusionapp.com
     user: root
     port: 22
     commands:
