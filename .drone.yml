@@ -1,0 +1,62 @@
+cache:
+  mount:
+  - wheelhouse
+build:
+  wheels:
+    image: fusionapp/base
+    pull: true
+    commands:
+      - >
+        /appenv/bin/pip wheel
+        --wheel-dir wheelhouse
+        --find-links wheelhouse
+        --no-cache-dir
+        --requirement requirements.txt .
+    when:
+      event: [push, pull_request]
+publish:
+  docker:
+    registry: scarlet.fusionapp.com:5001
+    mirror: https://scarlet.fusionapp.com:5002
+    insecure: false
+    repo: fusionapp/entropy
+    file: docker/entropy.docker
+    tag: $$BRANCH
+    when:
+      event: [push]
+      branch: [master]
+deploy:
+  ssh:
+    host: onyx.fusionapp.com
+    user: root
+    port: 22
+    commands:
+      - set -e
+      - docker pull scarlet.fusionapp.com:5000/fusionapp/entropy:master
+      - docker stop --time=30 entropy || true
+      - docker rm --force entropy || true
+      - >
+        docker run
+        --detach
+        --restart=always
+        --name=entropy
+        --volume=/srv/db/entropy:/db
+        --publish=8000:8000
+        scarlet.fusionapp.com:5000/fusionapp/entropy:master
+    when:
+      event: deployment
+      environment: production
+notify:
+  slack:
+    webhook_url: $$SLACK_URL
+    channel: general
+    username: drone
+notify:
+  slack:
+    webhook_url: $$SLACK_URL
+    channel: production
+    username: drone
+    when:
+      event: deployment
+      environment: production
+branches: [master]

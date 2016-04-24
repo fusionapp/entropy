@@ -10,6 +10,7 @@ from axiom.dependency import installOn
 
 from xmantissa.ixmantissa import IOfferingTechnician
 from xmantissa.offering import getOfferings
+from xmantissa.plugins import entropyoff
 
 from entropy.util import getAppStore, deferred
 
@@ -20,20 +21,17 @@ class GetAppStoreTests(TestCase):
     def setUp(self):
         self.siteStore = Store(self.mktemp())
         installOn(LoginSystem(store=self.siteStore), self.siteStore)
-
-        for offering in getOfferings():
-            if offering.name == u'Entropy':
-                break
-        else:
-            raise RuntimeError(u'Could not find Entropy offering')
-
+        offering = entropyoff.plugin
         IOfferingTechnician(self.siteStore).installOffering(offering)
 
     def test_getAppStore(self):
         """
         L{getAppStore} should return the Entropy application store.
         """
-        appStore = IRealm(self.siteStore).accountByAddress(u'Entropy', None).avatars.open()
+        appStore = (
+            IRealm(self.siteStore)
+            .accountByAddress(u'Entropy', None)
+            .avatars.open())
         self.assertIdentical(appStore, getAppStore(self.siteStore))
 
 
