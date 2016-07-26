@@ -32,6 +32,7 @@ deploy:
     secret_key: $$RANCHER_PRODUCTION_SECRET_KEY
     service: entropy/entropy
     docker_image: scarlet.fusionapp.com:5000/fusionapp/entropy:master
+    start_first: false
     when:
       event: deployment
       environment: production
