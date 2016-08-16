@@ -24,7 +24,7 @@ python-dateutil==2.5.3      # via txaws
 PyTZ==2016.6.1
 service-identity==16.0.0  # via twisted
 six==1.10.0               # via cryptography, pyopenssl
-Twisted[tls]==16.3.0
+Twisted[tls]==16.3.1
 txAWS==0.2.3
 Vertex==0.3.1
 zope.interface==4.2.0     # via twisted
