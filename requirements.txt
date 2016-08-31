@@ -27,7 +27,7 @@ six==1.10.0               # via cryptography, pyopenssl
 Twisted[tls]==16.4.0
 txAWS==0.2.3
 Vertex==0.3.1
-zope.interface==4.3.0     # via twisted
+zope.interface==4.3.1     # via twisted
 
 # The following packages are commented out because they are
 # considered to be unsafe in a requirements file:
