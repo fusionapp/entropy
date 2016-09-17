@@ -6,7 +6,7 @@
 #
 attrs==16.2.0             # via service-identity
 Axiom==0.7.5
-cffi==1.8.2; platform_python_implementation != 'PyPy'
+cffi==1.8.3; platform_python_implementation != 'PyPy'
 cryptography==1.5         # via pyopenssl
 cssutils==1.0.1           # via mantissa
 enum34==1.1.6             # via cryptography
