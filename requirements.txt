@@ -20,7 +20,7 @@ pyasn1-modules==0.0.8     # via service-identity
 pyasn1==0.1.9             # via cryptography, pyasn1-modules, service-identity
 PyCrypto==2.6.1
 PyOpenSSL==16.2.0
-python-dateutil==2.5.3      # via txaws
+python-dateutil==2.6.0      # via txaws
 PyTZ==2016.7
 service-identity==16.0.0  # via twisted
 six==1.10.0               # via cryptography, pyopenssl
