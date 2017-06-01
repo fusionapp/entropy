@@ -11,7 +11,7 @@ matrix:
     - env: TOXENV=py27
     - env: TOXENV=pypy
 install:
-- pip install -U pip setuptools wheel
+- pip install -U pip setuptools==35.0.2 wheel
 - pip install tox codecov
 - |
   if [ "${TOXENV}" == "pypy" ]; then
