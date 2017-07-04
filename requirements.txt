@@ -34,7 +34,7 @@ pytz==2017.2
 service-identity==17.0.0
 six==1.10.0
 https://twistedmatrix.com/Releases/rc/17.5.0rc2/Twisted-17.5.0rc2.tar.bz2#egg=twisted==17.5.0rc2
-txaws==0.2.3
+txaws==0.4.0
 venusian==1.1.0
 vertex==0.3.1
 zope.interface==4.4.1
