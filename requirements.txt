@@ -29,7 +29,7 @@ pycrypto==2.6.1
 pyopenssl==17.0.0
 pyparsing==2.2.0
 pyrsistent==0.12.3
-python-dateutil==2.6.0
+python-dateutil==2.6.1
 pytz==2017.2
 service-identity==17.0.0
 six==1.10.0
