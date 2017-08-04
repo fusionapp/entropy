@@ -23,7 +23,7 @@ olefile==0.44
 packaging==16.8
 pillow==4.2.1
 pyasn1-modules==0.0.9
-pyasn1==0.2.3
+pyasn1==0.3.2
 pycparser==2.18; platform_python_implementation != 'PyPy'
 pycrypto==2.6.1
 pyopenssl==17.2.0
