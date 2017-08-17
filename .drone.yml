@@ -39,6 +39,7 @@ pipeline:
       - sftp_cache_password
   publish:
     image: plugins/docker
+    dockerfile: docker/entropy.docker
     repo: eu.gcr.io/fusion-168903/entropy
     tags:
       - ${DRONE_BRANCH}
