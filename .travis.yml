@@ -1,6 +1,8 @@
 branches:
   only:
   - master
+  - staging
+  - trying
 sudo: false
 language: python
 cache:
