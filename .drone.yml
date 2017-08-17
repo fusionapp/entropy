@@ -1,52 +1,90 @@
-cache:
-  mount:
-  - wheelhouse
-build:
-  wheels:
+pipeline:
+  restore_cache:
+    image: appleboy/drone-sftp-cache
+    server: sftp-cache.drone7.non-production.fusionapp.com
+    port: 45945
+    username: drone-cache
+    path: /drone-cache
+    restore: true
+    ignore_branch: true
+    mount:
+      - /drone/pip-cache
+    secrets:
+      - sftp_cache_password
+  build:
     image: fusionapp/base
     pull: true
+    environment:
+      - PIP_CACHE_DIR=/drone/pip-cache
     commands:
+      - mkdir -p $PIP_CACHE_DIR
       - >
         /appenv/bin/pip wheel
         --wheel-dir wheelhouse
         --find-links wheelhouse
         --no-cache-dir
         --requirement requirements.txt .
+  rebuild_cache:
+    image: appleboy/drone-sftp-cache
+    server: sftp-cache.drone7.non-production.fusionapp.com
+    port: 45945
+    username: drone-cache
+    path: /drone-cache
+    rebuild: true
+    ignore_branch: true
+    mount:
+      - /drone/pip-cache
     when:
-      event: [push, pull_request]
-publish:
-  docker:
-    registry: scarlet.fusionapp.com:5001
-    mirror: https://scarlet.fusionapp.com:5002
-    insecure: false
-    repo: fusionapp/entropy
-    file: docker/entropy.docker
-    tag: $$BRANCH
+      event: push
+      branch: master
+    secrets:
+      - sftp_cache_password
+  publish:
+    image: plugins/docker
+    repo: eu.gcr.io/fusion-168903/entropy
+    tags:
+      - ${DRONE_BRANCH}
+      - git-${DRONE_COMMIT_SHA}
+    registry: eu.gcr.io
+    mirror: https://eu-mirror.gcr.io
+    username: _json_key
     when:
-      event: [push]
-      branch: [master]
-deploy:
-  rancher:
+      event: push
+      branch: master
+    secrets:
+      - docker_password
+  deploy:
+    image: peloton/drone-rancher
     url: https://rancher.fusionapp.com
-    access_key: $$RANCHER_PRODUCTION_ACCESS_KEY
-    secret_key: $$RANCHER_PRODUCTION_SECRET_KEY
-    service: entropy/entropy
-    docker_image: scarlet.fusionapp.com:5000/fusionapp/entropy:master
+    service: Fusion/entropy
+    docker_image: eu.gcr.io/fusion-168903/entropy:git-${DRONE_COMMIT_SHA}
     start_first: false
+    confirm: true
+    timeout: 120
     when:
       event: deployment
       environment: production
-notify:
+    secrets:
+      - rancher_access_key
+      - rancher_secret_key
   slack:
-    webhook_url: $$SLACK_URL
-    channel: general
-    username: drone
-notify:
+    image: plugins/slack
+    secrets:
+      - slack_webhook
+    when:
+      status:
+        - success
+        - failure
   slack:
-    webhook_url: $$SLACK_URL
+    image: plugins/slack
+    secrets:
+      - slack_webhook
     channel: production
-    username: drone
     when:
       event: deployment
       environment: production
-branches: [master]
+      status:
+        - success
+        - failure
+branches:
+  - master
