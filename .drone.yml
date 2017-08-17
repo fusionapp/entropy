@@ -21,8 +21,6 @@ pipeline:
       - >
         /appenv/bin/pip wheel
         --wheel-dir wheelhouse
-        --find-links wheelhouse
-        --no-cache-dir
         --requirement requirements.txt .
   rebuild_cache:
     image: appleboy/drone-sftp-cache
@@ -75,7 +73,7 @@ pipeline:
       status:
         - success
         - failure
-  slack:
+  slack_production:
     image: plugins/slack
     secrets:
       - slack_webhook
