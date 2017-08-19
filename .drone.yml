@@ -65,7 +65,7 @@ pipeline:
   deploy:
     image: peloton/drone-rancher
     url: https://rancher.fusionapp.com
-    service: Fusion/entropy
+    service: entropy/entropy
     docker_image: eu.gcr.io/fusion-168903/entropy:git-${DRONE_COMMIT_SHA}
     start_first: false
     confirm: true
