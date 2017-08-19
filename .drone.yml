@@ -11,6 +11,11 @@ pipeline:
       - /drone/pip-cache
     secrets:
       - sftp_cache_password
+    when:
+      event:
+        - push
+        - pull_request
+        - tag
   build:
     image: fusionapp/base
     pull: true
@@ -22,6 +27,11 @@ pipeline:
         /appenv/bin/pip wheel
         --wheel-dir wheelhouse
         --requirement requirements.txt .
+    when:
+      event:
+        - push
+        - pull_request
+        - tag
   rebuild_cache:
     image: appleboy/drone-sftp-cache
     server: sftp-cache.drone7.non-production.fusionapp.com
@@ -55,7 +65,7 @@ pipeline:
   deploy:
     image: peloton/drone-rancher
     url: https://rancher.fusionapp.com
-    service: Fusion/entropy
+    service: entropy/entropy
     docker_image: eu.gcr.io/fusion-168903/entropy:git-${DRONE_COMMIT_SHA}
     start_first: false
     confirm: true
