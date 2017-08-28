@@ -20,7 +20,7 @@ incremental==17.5.0
 ipaddress==1.0.18
 lxml==3.8.0
 mantissa==0.8.4
-nevow==0.14.2
+nevow==0.14.3
 olefile==0.44
 pillow==4.2.1
 pyasn1-modules==0.0.11
