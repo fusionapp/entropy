@@ -14,17 +14,17 @@ cryptography==2.0.3
 cssutils==1.0.2
 enum34==1.1.6
 epsilon==0.7.1
-hyperlink==17.3.0
+hyperlink==17.3.1
 idna==2.6
 incremental==17.5.0
 ipaddress==1.0.18
 lxml==3.8.0
 mantissa==0.8.4
-nevow==0.14.2
+nevow==0.14.3
 olefile==0.44
 pillow==4.2.1
-pyasn1-modules==0.0.11
-pyasn1==0.3.2
+pyasn1-modules==0.1.1
+pyasn1==0.3.3
 pycparser==2.18; platform_python_implementation != 'PyPy'
 pycrypto==2.6.1
 pyopenssl==17.2.0
