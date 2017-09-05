@@ -4,6 +4,7 @@
 #
 #    pip-compile --no-annotate --output-file requirements.txt requirements.in
 #
+appdirs==1.4.3
 asn1crypto==0.22.0
 attrs==17.2.0
 automat==0.6.0
@@ -19,21 +20,20 @@ idna==2.6
 incremental==17.5.0
 ipaddress==1.0.18
 lxml==3.8.0
-mantissa==0.8.4
+mantissa==0.9.0
 nevow==0.14.3
 olefile==0.44
 pillow==4.2.1
 pyasn1-modules==0.1.1
 pyasn1==0.3.3
 pycparser==2.18; platform_python_implementation != 'PyPy'
-pycrypto==2.6.1
 pyopenssl==17.2.0
-pyrsistent==0.12.3
+pyrsistent==0.13.0
 python-dateutil==2.6.1
 pytz==2017.2
 service-identity==17.0.0
 six==1.10.0
-twisted[tls]==17.5.0
+twisted[conch,tls]==17.5.0
 txaws==0.4.0
 venusian==1.1.0
 vertex==0.3.1
