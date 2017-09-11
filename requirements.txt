@@ -25,7 +25,7 @@ nevow==0.14.3
 olefile==0.44
 pillow==4.2.1
 pyasn1-modules==0.1.4
-pyasn1==0.3.3
+pyasn1==0.3.4
 pycparser==2.18; platform_python_implementation != 'PyPy'
 pyopenssl==17.2.0
 pyrsistent==0.13.0
