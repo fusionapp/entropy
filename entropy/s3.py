@@ -3,18 +3,17 @@
 
 Backend implementation using Amazon S3 for storage.
 """
-from zope.interface import implements
-
-from axiom.item import Item
 from axiom.attributes import text
-
-from txaws.service import AWSServiceRegion
+from axiom.item import Item
 from txaws.credentials import AWSCredentials
 from txaws.s3.exception import S3Error
+from txaws.service import AWSServiceRegion
+from zope.interface import implements
 
+from entropy.errors import NonexistentObject
 from entropy.ientropy import IContentStore
 from entropy.util import MemoryObject
-from entropy.errors import NonexistentObject
+
 
 
 class S3Store(Item):
@@ -59,13 +58,15 @@ class S3Store(Item):
 
     def getObject(self, objectId):
         hash, contentDigest = objectId.split(u':', 1)
-        def _makeObject(content):
-            headers = query.get_response_headers()
+
+        def _makeObject((response, body)):
             return MemoryObject(
-                content=content,
+                content=body,
                 hash=hash,
                 contentDigest=contentDigest,
-                contentType=unicode(headers['content-type'][0], 'utf-8'),
+                contentType=unicode(
+                    response.headers.getRawHeaders('content-type')[0],
+                    'utf-8'),
                 created=None)
 
         def _eb(f):
@@ -73,10 +74,10 @@ class S3Store(Item):
             raise NonexistentObject(objectId)
 
         client = self._getClient()
-        query = client.query_factory(
-            action='GET', creds=client.creds, endpoint=client.endpoint,
-            bucket=self.bucket.encode('utf-8'),
-            object_name=objectId.encode('utf-8'))
-        d = query.submit()
-        d.addCallbacks(_makeObject, _eb)
-        return d
+        return (
+            client._submit(client._query_factory(client._details(
+                method=b"GET",
+                url_context=client._url_context(
+                    bucket=self.bucket.encode('utf-8'),
+                    object_name=objectId.encode('utf-8')))))
+            .addCallbacks(_makeObject, _eb))
