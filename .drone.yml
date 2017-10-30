@@ -97,3 +97,5 @@ pipeline:
         - failure
 branches:
   - master
+  - staging
+  - trying
