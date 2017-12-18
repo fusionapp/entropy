@@ -5,7 +5,7 @@
 #    pip-compile --no-annotate --output-file requirements.txt requirements.in
 #
 appdirs==1.4.3
-asn1crypto==0.23.0
+asn1crypto==0.24.0
 attrs==17.3.0
 automat==0.6.0
 axiom==0.7.5
@@ -18,7 +18,7 @@ epsilon==0.7.1
 hyperlink==17.3.1
 idna==2.6
 incremental==17.5.0
-ipaddress==1.0.18
+ipaddress==1.0.19
 lxml==4.1.1
 mantissa==0.9.0
 nevow==0.14.3
