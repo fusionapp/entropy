@@ -22,7 +22,7 @@ ipaddress==1.0.19
 lxml==4.1.1
 mantissa==0.9.0
 nevow==0.14.3
-olefile==0.44
+olefile==0.45.1
 pillow==4.3.0
 pyasn1-modules==0.2.1
 pyasn1==0.4.2
