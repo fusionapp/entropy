@@ -9,28 +9,28 @@ asn1crypto==0.24.0
 attrs==17.4.0
 automat==0.6.0
 axiom==0.7.5
-cffi==1.11.2; platform_python_implementation != 'PyPy'
+cffi==1.11.5; platform_python_implementation != 'PyPy'
 constantly==15.1.0
 cryptography==2.1.4
 cssutils==1.0.2
 enum34==1.1.6
 epsilon==0.7.1
-hyperlink==17.3.1
+hyperlink==18.0.0
 idna==2.6
 incremental==17.5.0
 ipaddress==1.0.19
 lxml==4.1.1
 mantissa==0.9.0
 nevow==0.14.3
-olefile==0.44
-pillow==4.3.0
+olefile==0.45.1
+pillow==5.0.0
 pyasn1-modules==0.2.1
 pyasn1==0.4.2
 pycparser==2.18; platform_python_implementation != 'PyPy'
 pyopenssl==17.5.0
 pyrsistent==0.14.2
 python-dateutil==2.6.1
-pytz==2017.3
+pytz==2018.3
 service-identity==17.0.0
 six==1.11.0
 twisted[conch,tls]==17.9.0
