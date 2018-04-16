@@ -30,7 +30,7 @@ pycparser==2.18; platform_python_implementation != 'PyPy'
 pyopenssl==17.5.0
 pyrsistent==0.14.2
 python-dateutil==2.7.2
-pytz==2017.3
+pytz==2018.4
 service-identity==17.0.0
 six==1.11.0
 twisted[conch,tls]==17.9.0
