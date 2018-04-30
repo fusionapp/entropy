@@ -37,4 +37,4 @@ twisted[conch,tls]==18.4.0
 txaws==0.5.0
 venusian==1.1.0
 vertex==0.3.1
-zope.interface==4.4.3
+zope.interface==4.5.0
