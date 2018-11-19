@@ -18,7 +18,7 @@ epsilon==0.7.3
 hyperlink==18.0.0
 idna==2.7
 incremental==17.5.0
-ipaddress==1.0.21
+ipaddress==1.0.22
 lxml==4.2.4
 mantissa==0.9.0
 nevow==0.14.4
