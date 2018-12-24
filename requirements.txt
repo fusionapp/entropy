@@ -11,7 +11,7 @@ automat==0.7.0
 axiom==0.7.5
 cffi==1.11.5; platform_python_implementation != 'PyPy'
 constantly==15.1.0
-cryptography==2.3.1
+cryptography==2.4.2
 cssutils==1.0.2
 enum34==1.1.6
 epsilon==0.7.3
