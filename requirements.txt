@@ -29,7 +29,7 @@ pyasn1==0.4.5
 pycparser==2.19; platform_python_implementation != 'PyPy'
 pyopenssl==18.0.0
 pyrsistent==0.14.8
-python-dateutil==2.7.3
+python-dateutil==2.7.5
 pytz==2018.5
 service-identity==17.0.0
 six==1.11.0
