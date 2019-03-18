@@ -9,7 +9,7 @@ asn1crypto==0.24.0
 attrs==19.1.0
 automat==0.7.0
 axiom==0.7.5
-cffi==1.11.5; platform_python_implementation != 'PyPy'
+cffi==1.12.2; platform_python_implementation != 'PyPy'
 constantly==15.1.0
 cryptography==2.3.1
 cssutils==1.0.2
