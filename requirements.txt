@@ -15,7 +15,7 @@ cryptography==2.7
 cssutils==1.0.2
 enum34==1.1.6
 epsilon==0.7.3
-hyperlink==18.0.0
+hyperlink==19.0.0
 idna==2.7
 incremental==17.5.0
 ipaddress==1.0.21
