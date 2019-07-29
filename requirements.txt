@@ -6,35 +6,35 @@
 #
 appdirs==1.4.3
 asn1crypto==0.24.0
-attrs==18.1.0
+attrs==19.1.0
 automat==0.7.0
 axiom==0.7.5
-cffi==1.11.5; platform_python_implementation != 'PyPy'
+cffi==1.12.3; platform_python_implementation != 'PyPy'
 constantly==15.1.0
-cryptography==2.3.1
+cryptography==2.7
 cssutils==1.0.2
 enum34==1.1.6
 epsilon==0.7.3
-hyperlink==18.0.0
-idna==2.7
+hyperlink==19.0.0
+idna==2.8
 incremental==17.5.0
-ipaddress==1.0.21
-lxml==4.2.4
+ipaddress==1.0.22
+lxml==4.4.0
 mantissa==0.9.0
 nevow==0.14.4
-olefile==0.45.1
-pillow==5.2.0
-pyasn1-modules==0.2.2
-pyasn1==0.4.4
-pycparser==2.18; platform_python_implementation != 'PyPy'
-pyopenssl==18.0.0
-pyrsistent==0.14.4
-python-dateutil==2.7.3
-pytz==2018.5
-service-identity==17.0.0
-six==1.11.0
-twisted[tls,conch]==18.7.0
+olefile==0.46
+pillow==6.1.0
+pyasn1-modules==0.2.5
+pyasn1==0.4.5
+pycparser==2.19; platform_python_implementation != 'PyPy'
+pyopenssl==19.0.0
+pyrsistent==0.15.4
+python-dateutil==2.8.0
+pytz==2019.1
+service-identity==18.1.0
+six==1.12.0
+twisted[conch,tls]==19.2.1
 txaws==0.5.0
-venusian==1.1.0
+venusian==1.2.0
 vertex==0.3.1
-zope.interface==4.5.0
+zope.interface==4.6.0
